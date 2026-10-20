@@ -229,7 +229,7 @@
 
   /* ------------------------------------------------------------------ summary popup after a DSO submit (copy / share as plain text) */
   const dmyShort = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? (+m[3]) + '/' + (+m[2]) + '/' + m[1].slice(2) : ''; };
-  const money = x => '₹ ' + Number(x).toLocaleString('en-IN', Number.isInteger(+x) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = x => '₹' + Number(x).toLocaleString('en-IN', Number.isInteger(+x) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const payText = pays => [...pays].sort((a, b) => PAYMENT_MODES.indexOf(a.mode) - PAYMENT_MODES.indexOf(b.mode)).map(p => p.mode + ': ' + money(p.amount));
   const ICON_COPY = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
   const ICON_SHARE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></svg>';
@@ -347,14 +347,14 @@
         parts.push({ sheet: 'Payments Received', rows: [row] });
       }
       const label = name + (orders.length ? '  |  order ₹' + roundRupee(orders[0]['order value']).toLocaleString('en-IN') : '');
-      const sum = ['Visit:', 'Date: ' + dmyShort(ds), 'Beat: ' + (outBeat ? 'Out of Beat' : beat), 'Market: ' + mk, 'Counter: ' + name,
-                   'Remarks: ' + (rem || '-'), 'Interest in Cooler: ' + (cooler.value || '-')];
+      const sum = ['_*Visit:*_', '', 'Date: ' + dmyShort(ds), 'Beat: ' + (outBeat ? 'Out of Beat' : beat), 'Market: ' + mk, 'Counter: ' + name,
+                   'Remarks: ' + (rem || 'None'), 'Interest in Cooler: ' + cooler.value];
       if (lines.length) {
-        sum.push('', 'Orders:');
-        lines.forEach(l => sum.push(l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), l.qty + ' pc. @ ' + money(l.rate).replace('₹ ', '₹')));
-        sum.push('Total Order Value: ' + U.inr(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), 'Payment Terms: ' + tm);
+        sum.push('', '_*Orders:*_', '');
+        lines.forEach(l => sum.push(l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), l.qty + ' pc. @ ' + money(l.rate)));
+        sum.push('', '*Total Order Value:* ' + money(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), '', 'Payment Terms: ' + tm);
       }
-      if (pays.length) sum.push('', 'Payments:', ...payText(pays));
+      if (pays.length) sum.push('', '_*Payments:*_', '', ...payText(pays));
       return { id: U.uuid(), label, summary: sum.join('\n'), parts,
         overlay: { visit, orders, newCounter: existing ? null : { market: mk, name, code, mobile, type: ctype, gstin }, newMarket: newMarket ? { beat, market: mk } : null, fill: fill && Object.keys(fill).length ? Object.assign({ code, replace }, fill) : null } };
     }
@@ -389,7 +389,7 @@
           const total = pays.reduce((a, p) => a + p.amount, 0);
           const row = { date: ds, market: mk, 'counter name': c.name, 'counter code': c.code, total: plain(total) };
           pays.forEach(p => { row[p.mode.toLowerCase()] = plain(p.amount); });
-          const summary = ['Date: ' + dmyShort(ds), 'Market: ' + mk, 'Counter: ' + c.name, '', 'Payments:', ...payText(pays)].join('\n');
+          const summary = ['_*Details:*_', '', 'Date: ' + dmyShort(ds), 'Market: ' + mk, 'Counter: ' + c.name, '', '_*Payments:*_', '', ...payText(pays), '', '*Total:* ' + money(total)].join('\n');
           return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), summary, parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
         }, msg);
         if (!job) return;
