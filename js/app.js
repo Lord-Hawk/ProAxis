@@ -270,7 +270,7 @@
     const remarks = new Combo({ placeholder: 'Remarks (type or pick)', values: () => REMARKS, onInput: () => prio() });
     remarks.el.classList.add('dark');                                // black box, white text
     const prioEl = h('div', { class: 'hint' });
-    const cooler = h('select', { class: 'inp dark' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
+    const cooler = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
     const counterCode = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : (clean(counter.get()) && clean(market.get()) ? U.counterCode(clean(market.get()), clean(counter.get())) : ''); };
     let terms, termsField;
     const area = new ProductRows({ model, rateFn: (code, key) => model.rateFor(code, key), codeFn: counterCode, emptyText: 'No product added. Tap “＋ Add Product” to start the order (leave it empty for a visit without an order).', totalLabel: 'Total Order Amount', onChange: () => termsUpdate() });
@@ -293,7 +293,7 @@
       h('section', { class: 'card' }, h('h3', {}, 'Visit'),
         field("Beat (today's)", h('div', { class: 'beatbox' }, beatEl, h('label', { class: 'tick' }, outTick, ' Out of Beat'))),
         field('Market', market.el), field('Counter', counter.el), cd.el,
-        field('Remarks', remarks.el), prioEl, field('Interest in Cooler', cooler)),
+        field('Remarks', remarks.el), prioEl, field('Interest in Cooler', cooler, 'bigl')),
       h('section', { class: 'card' }, h('h3', {}, 'Order – products, quantity and rate'), area.el, termsField),
       h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
       submitBar('SUBMIT VISIT', submit, () => clearForm(true), msg));
@@ -320,6 +320,7 @@
       const lines = area.lines();
       const tm = lines.length ? terms.value : '';
       if (lines.length && !tm) throw new Error('This order has products but no Payment terms.\nSelect the Payment terms (COD, 15, 30 or 45 Days).');
+      if (!cooler.value) throw new Error('Select Interest in Cooler (Yes or No).');
       let rem = clean(remarks.get()); rem = REMARKS.find(x => x.toLowerCase() === rem.toLowerCase()) || rem;
       const pdays = REMARK_DAYS[norm(rem)] || 0;
       const pays = pay.payments();
