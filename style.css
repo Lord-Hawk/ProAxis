@@ -148,3 +148,4 @@ td.ach .bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;mar
 td.ach .bar i{display:block;height:100%;background:var(--green);border-radius:99px}
 td.ach span{font-size:12px}
 td.p-green{background:#dcfce7}td.p-yellow{background:#fef9c3}td.p-red{background:#fee2e2}
+table.beat th.c,table.beat td.c{text-align:center}
