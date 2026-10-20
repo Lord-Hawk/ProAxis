@@ -167,9 +167,11 @@
       const sel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...POSITIONS.map(p => h('option', { value: p }, p)));
       sel.value = v.position;
       const headBox = h('div');
-      const draw = () => { headBox.replaceChildren(...(!v.position ? [] : v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
-      sel.addEventListener('change', () => { v.position = sel.value; draw(); });
-      draw();
+      const draw = () => { headBox.replaceChildren(...(!v.position ? [] : v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – First Name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
+      const emailF = inp('Email ID (Optional)', 'email', { type: 'email', inputmode: 'email', autocapitalize: 'off' });
+      const emailLbl = () => { emailF.querySelector('.lbl').textContent = v.position === 'Head of Operations' ? 'Email ID' : 'Email ID (Optional)'; };
+      sel.addEventListener('change', () => { v.position = sel.value; draw(); emailLbl(); });
+      draw(); emailLbl();
       const go = h('button', { class: 'btn big', onclick: async () => {
         if (!v.position) { say(err, 'Select the Position first.', true); return; }
         go.disabled = true; say(err, '');
@@ -178,8 +180,8 @@
           st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
       } }, 'Send OTP');
-      box.replaceChildren(h('h2', {}, 'Register this device'), field('Position', sel), inp('Your name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
-        inp('Email ID', 'email', { type: 'email', inputmode: 'email', autocapitalize: 'off' }), headBox, go, err);
+      box.replaceChildren(h('h2', {}, 'Register this device'), field('Position', sel), inp('First Name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
+        emailF, headBox, go, err);
     }
     function step2() {
       const otp = h('input', { class: 'inp otp', inputmode: 'numeric', maxlength: '6', placeholder: '6-digit OTP', autocomplete: 'one-time-code' });
@@ -224,6 +226,34 @@
   const marketCodeOf = U.marketCode;
   const needIso = s => { if (!U.parseIso(s)) throw new Error('Enter a valid date.'); return s; };
   function tryRun(fn, msg) { try { return fn(); } catch (e) { say(msg, e.message, true); return undefined; } }
+
+  /* ------------------------------------------------------------------ summary popup after a DSO submit (copy / share as plain text) */
+  const dmyShort = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? (+m[3]) + '/' + (+m[2]) + '/' + m[1].slice(2) : ''; };
+  const money = x => '₹ ' + Number(x).toLocaleString('en-IN', Number.isInteger(+x) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const payText = pays => [...pays].sort((a, b) => PAYMENT_MODES.indexOf(a.mode) - PAYMENT_MODES.indexOf(b.mode)).map(p => p.mode + ': ' + money(p.amount));
+  const ICON_COPY = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+  const ICON_SHARE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></svg>';
+  function iconBtn(cls, svg, text, onclick) { const b = h('button', { type: 'button', class: 'btn ' + cls + ' iconbtn', onclick }); b.innerHTML = svg; b.append(h('span', {}, text)); return b; }
+  function showSummary(text) {
+    const box = h('textarea', { class: 'inp summary', readonly: true, rows: Math.min(18, text.split('\n').length + 1) }); box.value = text;
+    const close = () => ov.remove();
+    async function copy(quiet) {
+      try { await navigator.clipboard.writeText(text); }
+      catch (e) { box.removeAttribute('readonly'); box.select(); try { document.execCommand('copy'); } catch (e2) {} box.setAttribute('readonly', ''); box.blur(); }
+      if (!quiet) U.toast('Copied');
+    }
+    async function share() {
+      if (navigator.share) { try { await navigator.share({ text }); } catch (e) {} }
+      else { await copy(true); U.toast('Sharing is not available here – the text was copied instead.'); }
+    }
+    const ov = h('div', { class: 'modal', onclick: e => { if (e.target === ov) close(); } },
+      h('div', { class: 'modal-box', role: 'dialog', 'aria-label': 'Entry summary' },
+        h('div', { class: 'row-between modal-head' }, h('h2', {}, '✔ Saved – summary'), h('button', { class: 'x', onclick: close, 'aria-label': 'Close' }, '✕')),
+        h('div', { class: 'modal-body' }, box,
+          h('div', { class: 'summary-actions' }, iconBtn('', ICON_COPY, 'Copy', () => copy(false)), iconBtn('green', ICON_SHARE, 'Share', share)),
+          h('button', { type: 'button', class: 'btn gray done', onclick: close }, 'Done'))));
+    document.body.append(ov);
+  }
 
   /* ------------------------------------------------------------------ DSO: visit */
   function visitView() {
@@ -278,6 +308,7 @@
       const job = tryRun(build, msg); if (!job) return;
       submitJob(job);
       say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      showSummary(job.summary);
       clearForm(); window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     function build() {
@@ -315,7 +346,15 @@
         parts.push({ sheet: 'Payments Received', rows: [row] });
       }
       const label = name + (orders.length ? '  |  order ₹' + roundRupee(orders[0]['order value']).toLocaleString('en-IN') : '');
-      return { id: U.uuid(), label, parts,
+      const sum = ['Visit:', 'Date: ' + dmyShort(ds), 'Beat: ' + (outBeat ? 'Out of Beat' : beat), 'Market: ' + mk, 'Counter: ' + name,
+                   'Remarks: ' + (rem || '-'), 'Interest in Cooler: ' + (cooler.value || '-')];
+      if (lines.length) {
+        sum.push('', 'Orders:');
+        lines.forEach((l, i) => sum.push('Product ' + (i + 1) + ': ' + l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), 'Qty: ' + l.qty, 'Price per unit: ' + money(l.rate)));
+        sum.push('Total Order Value: ' + U.inr(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))));
+      }
+      if (pays.length) sum.push('', 'Payments:', ...payText(pays));
+      return { id: U.uuid(), label, summary: sum.join('\n'), parts,
         overlay: { visit, orders, newCounter: existing ? null : { market: mk, name, code, mobile, type: ctype, gstin }, newMarket: newMarket ? { beat, market: mk } : null, fill: fill && Object.keys(fill).length ? Object.assign({ code, replace }, fill) : null } };
     }
   }
@@ -345,14 +384,16 @@
           const c = model.findCounter(mk, counter.get());
           if (!c) throw new Error('Pick the Counter from the list (a payment can only be logged for an existing counter).');
           const pays = pay.payments();
-          if (!pays.length) throw new Error('No payment added.\nTap “＋ Other Payment Mode”, enter the amount and select the payment mode.');
+          if (!pays.length) throw new Error('No payment added.\nTap “＋ Payment”, enter the amount and select the payment mode.');
           const total = pays.reduce((a, p) => a + p.amount, 0);
           const row = { date: ds, market: mk, 'counter name': c.name, 'counter code': c.code, total: plain(total) };
           pays.forEach(p => { row[p.mode.toLowerCase()] = plain(p.amount); });
-          return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
+          const summary = ['Date: ' + dmyShort(ds), 'Market: ' + mk, 'Counter: ' + c.name, '', 'Payments:', ...payText(pays)].join('\n');
+          return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), summary, parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
         }, msg);
         if (!job) return;
-        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clearForm();
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+        showSummary(job.summary); clearForm();
       }, clearForm, msg));
     currentView = { onData: upd };
   }
@@ -537,7 +578,7 @@
               ol('Open your records Google Sheet → Share → add verify.proaxis@gmail.com as Editor.', 'Copy the sheet’s link (Share → Copy link) and paste it in “Records Google Sheet link”.',
                  'Tap “Send OTP”. The OTP goes to the owner (owner.proaxis@gmail.com) – ask the owner for it.'),
               h('p', {}, h('b', {}, 'Admin, Accountant or DSO')),
-              ol('Enter your Head of Operations’ name and email EXACTLY as they are registered (ask your Head).', 'Tap “Send OTP”. The OTP goes to your Head of Operations – ask them for it.',
+              ol('Enter your Head of Operations’ First Name and email EXACTLY as they are registered (ask your Head). Your own Email ID is optional; your Mobile No. is required.', 'Tap “Send OTP”. The OTP goes to your Head of Operations – ask them for it.',
                  'Your Head must already be registered, otherwise you will see “Please enter valid Head of Operative details”.'),
               h('p', {}, h('b', {}, 'Then (everyone)')),
               ol('Type the 6-digit OTP and tap “Verify”. The OTP is valid for 10 minutes; 3 wrong tries need a new OTP.', '“This device has been registered” → tap “Next”. You see the home page of your Position.')),
