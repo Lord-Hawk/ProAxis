@@ -138,7 +138,7 @@
   function registerView(notice) {
     currentView = null;
     const st = { step: 1, requestId: null, sentTo: '' };
-    const v = { position: 'DSO', name: '', mobile: '', email: '', headName: '', headEmail: '' };
+    const v = { position: 'DSO', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
     const box = h('div', { class: 'card' });
     root.replaceChildren(h('header', { class: 'top' }, h('span', { class: 'logo' }, 'ProAxis')), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
     const err = msgBox();
@@ -147,7 +147,7 @@
       const sel = h('select', { class: 'inp' }, ...POSITIONS.map(p => h('option', { value: p }, p)));
       sel.value = v.position;
       const headBox = h('div');
-      const draw = () => { headBox.replaceChildren(...(v.position === 'Head of Operations' ? [] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
+      const draw = () => { headBox.replaceChildren(...(v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
       sel.addEventListener('change', () => { v.position = sel.value; draw(); });
       draw();
       const go = h('button', { class: 'btn big', onclick: async () => {
