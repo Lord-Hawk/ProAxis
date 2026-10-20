@@ -262,15 +262,19 @@
     const out = h('div');
     const inr0 = x => '₹' + Math.round(x).toLocaleString('en-IN');
     const sel = picks ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----')) : null;
+    const isHead = pos === 'Head of Operations';                     // the Head also chooses the beat: Mon_1 ... Sat_4 in date order
+    const BEATS = []; [1, 2, 3, 4].forEach(w => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => BEATS.push(d + '_' + w)));
+    const beatSel = isHead ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...BEATS.map(b => h('option', { value: b }, b))) : null;
     let lastDso = '';
     const monthOf = iso => { const d = U.parseIso(iso); return d ? d.toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
     async function load(dso) {
       out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
       let r;
-      try { r = await authed('beat_report', { dso: dso || '' }, 60000); }
+      try { r = await authed('beat_report', { dso: dso || '', beat: beatSel ? beatSel.value : '' }, 60000); }
       catch (e) { out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? "No internet – Today's Beat needs a connection." : e.message)); return null; }
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
-      if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a DSO to see the markets of today’s beat.')); return r; }
+      if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
+      if (isHead && !beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
       const info = h('div', { class: 'beatinfo' },
         h('div', {}, h('span', {}, 'Date'), h('b', {}, dmyShort(r.date))), h('div', {}, h('span', {}, 'Beat'), h('b', {}, r.beat || '–')),
         h('div', {}, h('span', {}, 'Month'), h('b', {}, monthOf(r.date))), h('div', {}, h('span', {}, 'DSO'), h('b', {}, r.dso || dso || S.profile.name)));
@@ -282,19 +286,20 @@
         const has = x.target > 0, ach = has ? x.orderValue / x.target * 100 : null, pend = has ? 100 - ach : null;
         const pc = v => (Math.round(v * 10) / 10).toLocaleString('en-IN') + '%';
         const cls = pend == null ? '' : pend <= 0 ? 'p-green' : pend >= 100 ? 'p-red' : 'p-yellow';
-        return h('tr', { class: total ? 'sumrow' : '' }, h('td', {}, x.market), h('td', { class: 'num' }, has ? inr0(x.target) : '–'), h('td', { class: 'num' }, inr0(x.orderValue)),
+        return h('tr', { class: total ? 'sumrow' : '' }, h('td', {}, x.market), h('td', { class: 'c' }, has ? inr0(x.target) : '–'), h('td', { class: 'c' }, inr0(x.orderValue)),
           h('td', { class: 'ach' }, ach == null ? '–' : [h('div', { class: 'bar' }, h('i', { style: 'width:' + Math.max(0, Math.min(100, ach)) + '%' })), h('span', {}, pc(ach))]),
           h('td', { class: 'num ' + cls }, pend == null ? '–' : pc(pend)));
       };
       const body = rows.map(x => { if (x.target > 0) tT += x.target; tO += x.orderValue; return tr(x); });
       out.replaceChildren(info, h('div', { class: 'tablewrap' }, h('table', { class: 'beat' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Market'), h('th', {}, 'Monthly Target'), h('th', {}, 'Order Value'), h('th', {}, 'Achieved %'), h('th', {}, 'Pending %'))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Market'), h('th', { class: 'c' }, 'Monthly Target'), h('th', { class: 'c' }, 'Order Value'), h('th', {}, 'Achieved %'), h('th', {}, 'Pending %'))),
         h('tbody', {}, ...body))),
         h('p', { class: 'hint' }, 'Order Value = all orders of ' + monthOf(r.date) + ' for the counters of each market (by market code).'));
       return r;
     }
     if (sel) sel.addEventListener('change', () => { lastDso = sel.value; load(lastDso); });
-    main.append(h('section', { class: 'card' }, h('h3', {}, "Today's Beat"), sel ? field('DSO', sel) : null, out));
+    if (beatSel) beatSel.addEventListener('change', () => { if (lastDso) load(lastDso); });
+    main.append(h('section', { class: 'card' }, h('h3', {}, "Today's Beat"), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, out));
     load('');
     currentView = { onData() {} };
   }
