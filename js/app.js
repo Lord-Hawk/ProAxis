@@ -122,7 +122,7 @@
     }
     return true;
   }
-  let blocked = false, prefetched = false;
+  let blocked = false;
   function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name; }
   async function bootstrapNow() {
     const before = S.profile;
@@ -130,17 +130,17 @@
     S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
     save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
     if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + r.profile.position); home(); }       // new role -> new screens
-    if (!prefetched && (r.profile.position === 'DSO' || r.profile.position === 'Admin')) {      // Today's Beat ready before it is opened
-      prefetched = true; authed('beat_report', { dso: '', beat: '' }, 60000).then(x => repPut('beat||', x)).catch(() => {});
-    }
     else if (currentView && currentView.onData) currentView.onData();
+    refreshReports().catch(() => {});                                     // report data: in the background, only if it changed
   }
   async function sync(force) {
     if (syncing || !S.token) return;
     syncing = true; setStatus();
     try {
       if (blocked) { await authed('whoami', {}); blocked = false; start(); return; }     // throws while still blocked
+      const had = S.outbox.length;
       const ok = await flush();
+      if (ok && had) refreshReports(true).catch(() => {});               // something was uploaded: the report data changed
       if (ok) {
         if (force || Date.now() - lastRefresh > CFG.REFRESH_SECS * 1000 - 2000 || !S.snapshot) await bootstrapNow();
         else {                                                            // quick check: blocked / removed / role changed by the owner?
@@ -163,7 +163,7 @@
         h('button', { class: 'btn big', onclick: () => sync(true) }, 'Check again'))));
   }
   function deregister(msg) {
-    ['token', 'profile', 'snapshot', 'verifiedAt', 'outbox', 'failed'].forEach(k => store.del(k));
+    ['token', 'profile', 'snapshot', 'verifiedAt', 'outbox', 'failed', 'rdata', 'rep'].forEach(k => store.del(k)); RD.data = null;
     S.profile = null; S.snapshot = null; S.outbox = []; S.failed = []; delete mem.token;
     start(msg);
   }
@@ -275,7 +275,9 @@
     const markets = () => Object.keys(model.marketCounters).filter(m => Object.keys(model.marketCounters[m]).length).sort((a, b) => a.localeCompare(b));
     const market = new Combo({ placeholder: 'Market', strict: true, values: markets, onChange: () => { counter.set(''); out.replaceChildren(); } });
     const counter = new Combo({ placeholder: 'Counter', strict: true, values: () => model.countersFor(market.get()), onChange: v => { if (v) load(); else out.replaceChildren(); } });
-    let tab = 'visits', seq = 0;
+    let tab = 'visits', seq = 0, shownCounter = null;
+    const again = () => { if (!document.body.contains(out)) return RD.subs.delete(again); if (shownCounter && counter.get()) draw(counterReport(shownCounter.code), shownCounter); };
+    RD.subs.add(again);                                                     // newer data arrived: redraw what is on screen
     const pill = (txt, kind) => h('span', { class: 'pill ' + kind }, txt);
     const prodLine = l => l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : '') + ' × ' + l.qty + ' @ ' + rs(l.price);
     const box = (title, ...rows) => h('div', { class: 'cs-box' }, h('h4', {}, title), ...rows);
@@ -285,19 +287,13 @@
     const empty = t => h('p', { class: 'hint' }, t);
     async function load() {
       const c = model.findCounter(market.get(), counter.get()); if (!c) return;
-      const my = ++seq, key = 'ctr|' + c.code, cached = repGet(key);
-      if (cached) { draw(cached, c); out.prepend(updatingNote()); } else out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
-      let r;
-      try { r = await authed('counter_report', { code: c.code }, 60000); }
-      catch (e) {
-        if (my !== seq) return;
-        if (cached) { const n = out.querySelector('.upd'); if (n) n.textContent = e.offline ? 'Offline – showing the last saved figures.' : 'Could not refresh: ' + e.message; }
-        else out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – this screen needs a connection the first time.' : e.message));
-        return;
+      const my = ++seq; shownCounter = c;
+      if (!RD.data) {
+        out.replaceChildren(waitNote());
+        try { await reportData(); } catch (e) { if (my === seq) out.replaceChildren(noData(e)); return; }
       }
-      repPut(key, r);
       if (my !== seq) return;
-      draw(r, c);
+      draw(counterReport(c.code), c);
     }
     function draw(r, c) {
       const head = h('div', { class: 'cs-head' }, h('b', {}, r.name || c.name),
@@ -368,16 +364,141 @@
     document.body.append(ov);
   }
 
-  /* ------------------------------------------------------------------ last report results: shown at once, then refreshed */
-  const REP = store.get('rep', {}) || {};
-  const repGet = k => (REP[k] ? REP[k].r : null);
-  function repPut(k, r) {
-    REP[k] = { t: Date.now(), r };
-    const keys = Object.keys(REP).sort((a, b) => REP[b].t - REP[a].t);
-    keys.slice(25).forEach(x => delete REP[x]);                          // keep the 25 most recent
-    store.set('rep', REP);
+  /* ------------------------------------------------------------------ report data ON THE DEVICE
+     Everything Counter Search / Today's Beat / Beat Targets need is downloaded in ONE request in the background (at start-up, after
+     every upload and with every list refresh - only when it changed), kept on the device, and the screens are worked out locally. */
+  const RD = { data: store.get('rdata', null), busy: null, subs: new Set() };
+  function refreshReports(force) {
+    if (!S.token) return Promise.resolve(RD.data);
+    if (RD.busy) return RD.busy;
+    const have = force ? '' : ((RD.data && RD.data.sig) || '');
+    RD.busy = authed('report_data', { have }, 90000).then(r => {
+      if (!r.same) {
+        RD.data = { sig: r.sig, cols: r.cols, t: r.t, cal: r.cal, markets: r.markets, at: Date.now() };
+        store.set('rdata', RD.data);
+        RD.subs.forEach(f => { try { f(); } catch (e) {} });
+      }
+      return RD.data;
+    }).finally(() => { RD.busy = null; });
+    return RD.busy;
   }
-  const updatingNote = () => h('p', { class: 'hint upd' }, 'Updating…');
+  async function reportData() {                         // the data now (download first only if the device has none yet)
+    if (RD.data) return RD.data;
+    return refreshReports(true);
+  }
+  function RT(name) {
+    const d = RD.data, keep = (d.cols || {})[name] || [], idx = {}; keep.forEach((k, i) => { idx[k] = i; });
+    return { rows: (d.t || {})[name] || [], get: (r, ...keys) => { for (const k of keys) { const v = r[idx[k]]; if (v !== '' && v != null) return v; } return ''; } };
+  }
+  const TERM_DAYS_R = { 'cod': 0, '15 days': 14, '30 days': 28, '45 days': 42 };
+  const isoOf = v => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : '');
+  function counterReport(code) {
+    const want = norm(code), today = U.todayIso();
+    const n = v => { const x = Number(v); return isFinite(x) ? x : 0; }, r2 = x => Math.round(x * 100) / 100;
+    const mob = v => (typeof v === 'number' ? String(v) : sval(v));
+    const line = (T, r) => ({ sub: sval(T.get(r, 'sub item', 'sub-item')), colour: sval(T.get(r, 'colour')), qty: n(T.get(r, 'qty')), price: n(T.get(r, 'price')) });
+    const out = { today, name: '', market: '', code, mobile: '', gstin: '', beat: '', dso: '' };
+    let T = RT('Payments Received'); const payments = [];
+    T.rows.forEach(r => {
+      if (norm(T.get(r, 'counter code')) !== want) return;
+      const modes = [];
+      ['Cash', 'UPI', 'Cheque', 'Card'].forEach(m => { const a = n(T.get(r, m.toLowerCase())); if (a) modes.push({ mode: m, amount: a }); });
+      const tot = modes.reduce((a, x) => a + x.amount, 0) || n(T.get(r, 'total'));
+      if (!tot) return;
+      payments.push({ date: isoOf(T.get(r, 'date')), by: sval(T.get(r, 'received by')), modes, total: r2(tot) });
+      if (!out.name) { out.name = sval(T.get(r, 'counter name')); out.market = sval(T.get(r, 'market')).toUpperCase(); }
+    });
+    const payDates = {}; payments.forEach(p => { payDates[p.date] = 1; });
+    T = RT('Visits'); const visits = [];
+    T.rows.forEach(r => {
+      if (norm(T.get(r, 'counter code')) !== want) return;
+      const d = isoOf(T.get(r, 'date'));
+      visits.push({ date: d, dso: sval(T.get(r, 'dso')), beat: sval(T.get(r, 'beat')), order: norm(T.get(r, 'productive')) === 'yes' || n(T.get(r, 'orders')) > 0, payment: !!payDates[d] });
+      out.name = sval(T.get(r, 'counter name')) || out.name; out.market = sval(T.get(r, 'market')).toUpperCase() || out.market;
+      out.mobile = mob(T.get(r, 'mobile')) || out.mobile; out.gstin = sval(T.get(r, 'gstin/pan', 'gstin/uin')) || out.gstin;
+    });
+    visits.sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (visits.length) { out.beat = visits[0].beat; out.dso = visits[0].dso; }
+    T = RT('Orders'); const ord = {}, terms = {};
+    T.rows.forEach(r => {
+      if (norm(T.get(r, 'counter code')) !== want) return;
+      const no = sval(T.get(r, 'order no.')) || ('(no number) ' + isoOf(T.get(r, 'date')));
+      const o = ord[no] || (ord[no] = { no, date: isoOf(T.get(r, 'date')), terms: sval(T.get(r, 'payment terms')), lines: [], total: 0 });
+      const l = line(T, r);
+      if (l.sub || l.qty) { o.lines.push(l); const v = T.get(r, 'price x qty'); o.total += v === '' ? l.qty * l.price : n(v); }
+      if (!o.terms) o.terms = sval(T.get(r, 'payment terms'));
+      if (!out.name) out.name = sval(T.get(r, 'counter name'));
+    });
+    const orders = Object.values(ord).map(o => { o.total = r2(o.total); terms[norm(o.no)] = o.terms; return o; }).sort((a, b) => (a.date < b.date ? 1 : -1));
+    T = RT('Invoice Record'); const inv = {};
+    T.rows.forEach(r => {
+      if (norm(T.get(r, 'counter code')) !== want) return;
+      const no = sval(T.get(r, 'invoice no.')); if (!no) return;
+      const i = inv[no] || (inv[no] = { no, date: isoOf(T.get(r, 'date')), orderNo: sval(T.get(r, 'order no.')), lines: [], billing: 0, sum: 0 });
+      const l = line(T, r);
+      if (l.sub && l.qty) { i.lines.push(l); const v = T.get(r, 'price x qty (for sum ref)', 'price x qty'); i.sum += v === '' ? l.qty * l.price : n(v); }
+      if (n(T.get(r, 'billing value'))) i.billing = n(T.get(r, 'billing value'));
+      if (!out.name) { out.name = sval(T.get(r, 'counter name')); out.market = sval(T.get(r, 'market')).toUpperCase(); }
+    });
+    const invoices = Object.values(inv).map(i => {
+      i.cancelled = !i.lines.length;
+      i.total = i.cancelled ? 0 : r2(i.billing || Math.round(i.sum));
+      i.terms = terms[norm(i.orderNo)] || '';
+      i.due = i.date ? U.addDays(i.date, TERM_DAYS_R[norm(i.terms)] || 0) : '';
+      return i;
+    });
+    const received = r2(payments.reduce((a, p) => a + p.total, 0));
+    let left = received;
+    invoices.filter(i => !i.cancelled).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.no < b.no ? -1 : 1))).forEach(i => {
+      const paid = Math.min(left, i.total); left = r2(left - paid);
+      i.paid = r2(paid); i.pending = r2(i.total - paid);
+      i.status = i.pending <= 0 ? 'Paid' : paid > 0 ? 'Part paid' : 'Unpaid';
+    });
+    invoices.forEach(i => { if (i.cancelled) { i.paid = 0; i.pending = 0; i.status = 'Cancelled'; } });
+    invoices.sort((a, b) => (a.date < b.date ? 1 : -1)); payments.sort((a, b) => (a.date < b.date ? 1 : -1));
+    Object.assign(out, { visits, orders, invoices, payments, received,
+      orderValue: r2(orders.reduce((a, o) => a + o.total, 0)), billed: r2(invoices.reduce((a, i) => a + i.total, 0)) });
+    out.pending = r2(out.billed - received);
+    return out;
+  }
+  function beatTargetsOf(rows, beat) {
+    const want = norm(beat), width = rows.reduce((m, r) => Math.max(m, r.length), 0), out = [], seen = {};
+    const cell = (r, c) => (c < r.length ? clean(r[c]) : '');
+    const num = v => (typeof v === 'number' ? v : (/^[\d,.\s₹]+$/.test(sval(v)) && /\d/.test(sval(v)) ? Number(sval(v).replace(/[^\d.]/g, '')) : null));
+    for (let c = 0; c < width; c++) {
+      if (!rows.slice(0, 2).some(r => norm(cell(r, c)) === want)) continue;
+      rows.slice(2).forEach(r => {
+        const m = cell(r, c).toUpperCase();
+        if (!m || seen[m] || num(r[c]) !== null) return;
+        seen[m] = 1; out.push({ market: m, target: c + 1 < r.length ? num(r[c + 1]) : null });
+      });
+    }
+    return out;
+  }
+  function beatReport(dso, pickBeat) {
+    const d = RD.data, today = U.todayIso(), month = today.slice(0, 7), pos = S.profile.position;
+    const sheets = d.markets || [];
+    const who = pos === 'DSO' ? S.profile.name : dso;
+    const out = { dsos: pos === 'DSO' ? [] : sheets.map(x => x.name), date: today, beat: (d.cal || {})[today] || model.beatForDate(today) || '' };
+    if (pos === 'Head of Operations' && /^(Mon|Tue|Wed|Thu|Fri|Sat)_[1-4]$/.test(pickBeat || '')) out.beat = pickBeat;
+    if (!who) return out;
+    const ms = sheets.find(x => norm(x.name) === norm(who));
+    out.dso = ms ? ms.name : who;
+    if (!ms) { out.error = "There is no '" + who + " Markets' tab in the records sheet."; return out; }
+    if (!out.beat) { out.error = 'No beat is set for today in the Year Calendar.'; return out; }
+    const T = RT('Orders'), byCode = {};
+    T.rows.forEach(r => {
+      if (isoOf(T.get(r, 'date')).slice(0, 7) !== month) return;
+      const code = norm(T.get(r, 'market code')).toUpperCase(); if (!code) return;
+      let v = Number(T.get(r, 'price x qty'));
+      if (!isFinite(v) || T.get(r, 'price x qty') === '') v = (Number(T.get(r, 'qty')) || 0) * (Number(T.get(r, 'price')) || 0);
+      byCode[code] = (byCode[code] || 0) + (isFinite(v) ? v : 0);
+    });
+    out.rows = beatTargetsOf(ms.rows, out.beat).map(x => ({ market: x.market, target: x.target, orderValue: Math.round((byCode[U.marketCode(x.market).toUpperCase()] || 0) * 100) / 100 }));
+    return out;
+  }
+  const waitNote = () => h('p', { class: 'hint' }, 'Getting the data for the first time…');
+  const noData = e => h('div', { class: 'msg bad' }, e && e.offline ? 'No internet – this screen needs a connection the first time.' : 'Could not get the data: ' + (e && e.message || ''));
 
   /* ------------------------------------------------------------------ Today's Beat: markets, monthly target, this month's orders, achieved % */
   function beatView() {
@@ -392,23 +513,15 @@
     const beatSel = isHead ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...BEATS.map(b => h('option', { value: b }, b))) : null;
     let lastDso = '';
     const monthOf = iso => { const d = U.parseIso(iso); return d ? d.toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
-    let bseq = 0;
     async function load(dso) {
-      const my = ++bseq, bt = beatSel ? beatSel.value : '', key = 'beat|' + (dso || '') + '|' + bt;
-      const cached = repGet(key);
-      if (cached) { render(cached, dso); out.append(updatingNote()); } else out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
-      let r;
-      try { r = await authed('beat_report', { dso: dso || '', beat: bt }, 60000); }
-      catch (e) {
-        if (my !== bseq) return null;
-        if (cached) { const n = out.querySelector('.upd'); if (n) n.textContent = e.offline ? 'Offline – showing the last saved figures.' : 'Could not refresh: ' + e.message; }
-        else out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – this screen needs a connection the first time.' : e.message));
-        return null;
+      if (!RD.data) {
+        out.replaceChildren(waitNote());
+        try { await reportData(); } catch (e) { out.replaceChildren(noData(e)); return null; }
       }
-      repPut(key, r);
-      if (my !== bseq) return r;
-      return render(r, dso);
+      return render(beatReport(dso, beatSel ? beatSel.value : ''), dso);
     }
+    const again = () => { if (document.body.contains(out)) load(lastDso); else RD.subs.delete(again); };   // newer data arrived
+    RD.subs.add(again);
     function render(r, dso) {
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
       if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
