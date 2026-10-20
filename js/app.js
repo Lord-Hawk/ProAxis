@@ -4,7 +4,7 @@
   const CFG = window.PROAXIS_CONFIG;
   const REMARKS = ['Next Week Visit', 'Next Month Visit'], REMARK_DAYS = { 'next week visit': 14, 'next month visit': 28 };
   const TERMS = ['COD', '15 Days', '30 Days', '45 Days'], TERM_DAYS = { 'COD': 0, '15 Days': 14, '30 Days': 28, '45 Days': 42 };
-  const POSITIONS = ['DSO', 'Admin', 'Head of Operations', 'Accountant'];
+  const POSITIONS = ['Head of Operations', 'Admin', 'Accountant', 'DSO'];
   const NO_BEAT = '(no beat)';
   const root = document.getElementById('app');
 
