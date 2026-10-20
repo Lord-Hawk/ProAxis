@@ -350,7 +350,7 @@
                    'Remarks: ' + (rem || '-'), 'Interest in Cooler: ' + (cooler.value || '-')];
       if (lines.length) {
         sum.push('', 'Orders:');
-        lines.forEach((l, i) => sum.push('Product ' + (i + 1) + ': ' + l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), 'Qty: ' + l.qty, 'Price per unit: ' + money(l.rate)));
+        lines.forEach(l => sum.push(l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), l.qty + ' pc. @ ' + money(l.rate).replace('₹ ', '₹')));
         sum.push('Total Order Value: ' + U.inr(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), 'Payment Terms: ' + tm);
       }
       if (pays.length) sum.push('', 'Payments:', ...payText(pays));
