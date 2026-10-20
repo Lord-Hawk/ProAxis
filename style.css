@@ -69,3 +69,14 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-ap
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;background:#0f172a;color:#fff;padding:10px 16px;border-radius:99px;transition:.25s;z-index:99;max-width:90vw}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media(prefers-reduced-motion:reduce){.toast{transition:none}}
+
+/* black boxes with white text (Remarks, Payment Terms) and big bold field titles */
+.inp.dark,.dark .inp{background:#000;color:#fff;border-color:#000}
+.dark .inp::placeholder{color:#cbd5e1}
+.dark .combo-arrow{color:#fff}
+.dark .combo-list{background:#111;border-color:#333}
+.dark .combo-item{color:#fff;border-bottom-color:#333}
+.dark .combo-item.sel,.dark .combo-item:active{background:#2563EB}
+.dark .combo-none{color:#cbd5e1}
+select.dark option{background:#000;color:#fff}
+.field.bigl>.lbl{font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px}
