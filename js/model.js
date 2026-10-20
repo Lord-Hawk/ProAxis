@@ -9,7 +9,7 @@
     reset() {
       this.tree = {}; this.listPrice = {}; this.buyPrice = {}; this.counters = {}; this.marketCounters = {};
       this.counterTypes = new Set(); this.partial = {}; this.calendar = {}; this.markets = new Set();
-      this.dsoMarkets = {}; this.everyMarketSet = new Set(); this.invoices = {};
+      this.dsoMarkets = {}; this.everyMarketSet = new Set(); this.invoices = {}; this.outOfBeatSet = new Set();
     }
     load(d) {
       this.reset();
@@ -23,6 +23,7 @@
       this.calendar = d.calendar || {};
       this.dsoMarkets = d.dsoMarkets ? JSON.parse(JSON.stringify(d.dsoMarkets)) : {};
       (d.everyMarket || []).forEach(m => this.everyMarketSet.add(m));
+      (d.outOfBeat || []).forEach(m => this.outOfBeatSet.add(m));
       Object.entries(d.invoices || {}).forEach(([no, v]) => { this.invoices[no] = v; });
     }
     addProduct(t, i, s, c) {
@@ -76,8 +77,8 @@
     }
     beatForDate(iso) { return this.calendar[iso] || ''; }
     marketsFor(beat) { return [...((this.dsoMarkets || {})[sval(beat).toLowerCase()] || [])].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())); }
-    sheetMarkets() {                                      // every market of the DSO's markets sheet ('Out of Beat')
-      const s = new Set(); Object.values(this.dsoMarkets || {}).forEach(l => l.forEach(m => s.add(m)));
+    sheetMarkets() {                                      // 'Out of Beat': the markets of ALL DSOs' markets sheets together
+      const s = new Set(this.outOfBeatSet); Object.values(this.dsoMarkets || {}).forEach(l => l.forEach(m => s.add(m)));
       return [...s].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
     }
     allMarkets() {                                        // payments form: every known market
