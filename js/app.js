@@ -45,7 +45,7 @@
 
   /* ------------------------------------------------------------------ API */
   async function api(action, body, timeoutMs) {
-    if (!CFG.API_URL || CFG.API_URL.indexOf('PASTE') === 0) throw new ApiError('The app is not set up yet (API_URL in js/config.js).', true);
+    if (!CFG.API_URL || CFG.API_URL.indexOf('PASTE') === 0) throw new ApiError('The app is not set up yet (API_URL in js/config.js).', false, true);   // not the entry's fault: it keeps waiting
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs || 45000);
     let res;
     try {
@@ -83,7 +83,7 @@
       catch (e) {
         if (e.offline) return false;
         if (e.code === 'removed' || e.code === 'blocked') throw e;
-        if (e.permanent) { S.outbox.shift(); S.failed.push({ label: job.label, error: e.message, id: job.id, at: Date.now() }); save('outbox'); save('failed'); }
+        if (e.permanent) { S.outbox.shift(); S.failed.push({ label: job.label, error: e.message, id: job.id, at: Date.now(), job }); save('outbox'); save('failed'); }
         else return false;                               // temporary server trouble: keep it, try later
       }
     }
@@ -203,7 +203,9 @@
   function failedList() {
     if (!S.failed.length) return null;
     return h('div', { class: 'card warnbox' }, h('b', {}, 'These entries could not be saved:'),
-      ...S.failed.map((f, i) => h('div', { class: 'failed' }, h('div', {}, f.label), h('small', {}, f.error), h('button', { class: 'btn small gray', onclick: () => { S.failed.splice(i, 1); save('failed'); home(); } }, 'Discard'))));
+      ...S.failed.map((f, i) => h('div', { class: 'failed' }, h('div', {}, f.label), h('small', {}, f.error), h('div', { class: 'row-between' },
+        f.job ? h('button', { class: 'btn small', onclick: () => { S.failed.splice(i, 1); save('failed'); S.outbox.push(f.job); save('outbox'); home(); sync(false); } }, 'Try again') : null,
+        h('button', { class: 'btn small gray', onclick: () => { S.failed.splice(i, 1); save('failed'); home(); } }, 'Discard')))));
   }
   function home() {
     const pos = S.profile.position;
