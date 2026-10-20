@@ -297,8 +297,7 @@
       const body = rows.map(x => { if (x.target > 0) tT += x.target; tO += x.orderValue; return tr(x); });
       out.replaceChildren(info, h('div', { class: 'tablewrap' }, h('table', { class: 'beat' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Market'), h('th', { class: 'c' }, 'Monthly Target'), h('th', { class: 'c' }, 'Order Value'), h('th', {}, 'Achieved %'), h('th', {}, 'Pending %'))),
-        h('tbody', {}, ...body))),
-        h('p', { class: 'hint' }, 'Order Value = all orders of ' + monthOf(r.date) + ' for the counters of each market (by market code).'));
+        h('tbody', {}, ...body))));
       return r;
     }
     if (sel) sel.addEventListener('change', () => { lastDso = sel.value; load(lastDso); });
