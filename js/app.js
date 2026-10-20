@@ -505,6 +505,68 @@
     }
     rebuildModel(); home(); sync(true);
   }
+  /* ------------------------------------------------------------------ "Install as Mobile App" (mobile BROWSER only) */
+  const Install = (function () {
+    const standalone = () => (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: minimal-ui)').matches)) || navigator.standalone === true;
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const isMobile = isIOS || /Android|Mobile/.test(ua);
+    let deferred = null, bar = null;
+    const dl = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M6.5 10.5 12 16l5.5-5.5"/><path d="M4 20h16"/></svg>';
+    function hide() { if (bar) { bar.remove(); bar = null; } document.body.classList.remove('has-install'); }
+    function help() {
+      const close = () => ov.remove();
+      const sec = (t, ...kids) => h('section', {}, h('h3', {}, t), ...kids);
+      const ol = (...items) => h('ol', {}, ...items.map(x => h('li', {}, x)));
+      const ov = h('div', { class: 'modal', onclick: e => { if (e.target === ov) close(); } },
+        h('div', { class: 'modal-box', role: 'dialog', 'aria-label': 'How to install and register' },
+          h('div', { class: 'row-between modal-head' }, h('h2', {}, 'Install & register ProAxis'), h('button', { class: 'x', onclick: close, 'aria-label': 'Close' }, '✕')),
+          h('div', { class: 'modal-body' },
+            sec('1. Install the app – Android (Chrome)',
+              ol('Open this page in Google Chrome.', 'Tap the gold “Install as Mobile App” button at the bottom.', 'Tap “Install” in the box that appears.',
+                 'Wait a few seconds: “ProAxis” appears on your home screen and in your app list like any other app.',
+                 'If no box appears: tap ⋮ (top right in Chrome) → “Install app” (or “Add to Home screen” → “Install”).')),
+            sec('1. Install the app – iPhone / iPad (Safari)',
+              ol('Open this page in Safari (installing does not work from Chrome on iPhone).', 'Tap the Share button (the square with an arrow, at the bottom).',
+                 'Scroll down and tap “Add to Home Screen”.', 'Tap “Add” (top right). “ProAxis” appears on your home screen.')),
+            sec('2. Open it from the home screen',
+              h('p', {}, 'Always open ProAxis from its home-screen icon, not from the browser. Allow location when it asks – visits record where they were logged.')),
+            sec('3. Register this device (one time)',
+              h('p', {}, 'Choose your Position, then fill in your Name, Mobile No. and Email ID. Then, depending on the Position:'),
+              h('p', {}, h('b', {}, 'Head of Operations')),
+              ol('Open your records Google Sheet → Share → add verify.proaxis@gmail.com as Editor.', 'Copy the sheet’s link (Share → Copy link) and paste it in “Records Google Sheet link”.',
+                 'Tap “Send OTP”. The OTP goes to the owner (owner.proaxis@gmail.com) – ask the owner for it.'),
+              h('p', {}, h('b', {}, 'Admin, Accountant or DSO')),
+              ol('Enter your Head of Operations’ name and email EXACTLY as they are registered (ask your Head).', 'Tap “Send OTP”. The OTP goes to your Head of Operations – ask them for it.',
+                 'Your Head must already be registered, otherwise you will see “Please enter valid Head of Operative details”.'),
+              h('p', {}, h('b', {}, 'Then (everyone)')),
+              ol('Type the 6-digit OTP and tap “Verify”. The OTP is valid for 10 minutes; 3 wrong tries need a new OTP.', '“This device has been registered” → tap “Next”. You see the home page of your Position.')),
+            sec('Good to know',
+              ol('Entries are saved on the device first and uploaded automatically; without internet they wait and go up later.',
+                 'Connect to the internet at least every 3 days.', 'If your Position or access is changed by the owner, the app changes by itself.')))));
+      document.body.append(ov);
+    }
+    async function install() {
+      if (deferred) {
+        const ev = deferred; deferred = null;
+        ev.prompt();
+        try { const r = await ev.userChoice; if (r && r.outcome === 'accepted') { hide(); U.toast('Installing ProAxis – it will appear on your home screen.'); } } catch (e) {}
+      } else help();                                       // iPhone, or the browser cannot install directly: show the steps
+    }
+    function show() {
+      if (bar || standalone() || !isMobile) return;
+      const btn = h('button', { class: 'install-main', type: 'button', onclick: install });
+      btn.innerHTML = dl; btn.append(h('span', {}, 'Install as Mobile App'));
+      bar = h('div', { class: 'install-bar' }, btn, h('button', { class: 'install-help', type: 'button', onclick: help, 'aria-label': 'How to install and register' }, '?'));
+      document.body.append(bar); document.body.classList.add('has-install');
+    }
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; show(); });
+    window.addEventListener('appinstalled', () => { deferred = null; hide(); });
+    if (window.matchMedia) try { matchMedia('(display-mode: standalone)').addEventListener('change', e => { if (e.matches) hide(); }); } catch (e) {}
+    return { show, hide, help };
+  })();
+  Install.show();
+
   window.ProAxis = { start, model, S, sync };
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   start();
