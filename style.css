@@ -128,3 +128,6 @@ textarea.summary{font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monosp
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn.green{background:var(--green-d)}
 .btn.done{width:100%;margin-top:10px}
+
+/* ProAxis logo in the top bar (on a white tile so the navy logo shows on the blue bar) */
+.top img.logo{height:46px;width:auto;background:#fff;border-radius:10px;padding:3px 5px;flex:none;display:block}
