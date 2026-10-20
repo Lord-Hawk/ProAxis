@@ -16,11 +16,14 @@
       this.value = ''; this.sel = -1; this.shown = [];
       this.input.addEventListener('input', () => { this.value = this.input.value; if (this.onInput) this.onInput(this.value); this.show(true); });
       this.input.addEventListener('focus', () => { Combo.closeOthers(this); this.show(false); });
-      this.input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== this.input) { this.commit(); this.close(); } }, 140));
+      this.input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== this.input) { this.commit(); if (Date.now() - this.btnAt > 700) this.close(); } }, 140));
       this.input.addEventListener('click', () => { if (this.list.hidden && !this.input.disabled) { Combo.closeOthers(this); this.show(false); } });
       this.input.addEventListener('keydown', e => this.key(e));
+      /* the square ▼ button: opens / closes the list WITHOUT the keyboard (tapping the text area opens the keyboard) */
+      this.btnAt = 0;
+      this.btn.addEventListener('pointerdown', () => { this.btnAt = Date.now(); if (document.activeElement === this.input) this.input.blur(); });
       this.btn.addEventListener('mousedown', e => e.preventDefault());
-      this.btn.addEventListener('click', () => { if (this.input.disabled) return; if (!this.list.hidden) this.close(); else { this.input.focus(); this.show(false); } });
+      this.btn.addEventListener('click', () => { if (this.input.disabled) return; this.btnAt = Date.now(); if (!this.list.hidden) this.close(); else { Combo.closeOthers(this); this.show(false); } });
       this.list.addEventListener('mousedown', e => e.preventDefault());               // keeps the keyboard / focus while tapping
       this.list.addEventListener('click', e => { e.preventDefault(); const li = e.target.closest('[data-i]'); if (li) this.pick(this.shown[+li.dataset.i]); });
       Combo.all.add(this);
