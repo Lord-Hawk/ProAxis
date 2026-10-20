@@ -120,3 +120,11 @@ body.has-install .page{padding-bottom:140px}
 .modal-body h3{font-size:16px;margin:14px 0 6px;color:var(--header)}
 .modal-body ol{margin:4px 0 8px;padding-left:22px}.modal-body li{margin:4px 0}
 .modal-body p{margin:6px 0}
+
+/* summary popup after submit */
+textarea.summary{font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical;background:#f8fafc;color:var(--text);margin-top:10px;white-space:pre}
+.summary-actions{display:flex;gap:10px;margin-top:12px}
+.summary-actions .btn{flex:1}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.green{background:var(--green-d)}
+.btn.done{width:100%;margin-top:10px}
