@@ -1,7 +1,7 @@
 /* ProAxis service worker: keeps the app files so the app opens without internet. Bump CACHE when you upload new files. */
-const CACHE = 'proaxis-v4';
+const CACHE = 'proaxis-v5';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/config.js', 'js/util.js', 'js/model.js', 'js/ui.js', 'js/app.js',
-               'icons/icon-192.png', 'icons/icon-512.png'];
+               'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo-bar.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
