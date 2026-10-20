@@ -149,3 +149,30 @@ td.ach .bar i{display:block;height:100%;background:var(--green);border-radius:99
 td.ach span{font-size:12px}
 td.p-green{background:#dcfce7}td.p-yellow{background:#fef9c3}td.p-red{background:#fee2e2}
 table.beat th.c,table.beat td.c{text-align:center}
+
+/* Counter Search */
+.homecard.teal{background:#0F766E}
+.cs-card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.12);margin-bottom:14px}
+.cs-head{background:var(--header);color:#fff;padding:14px 16px}
+.cs-head b{display:block;font-size:19px}.cs-head span{font-size:13px;opacity:.9}
+.cs-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:#f1f5f9}
+.cs-stat{background:#fff;border-radius:10px;padding:8px 10px;box-shadow:0 1px 2px rgba(15,23,42,.08)}
+.cs-stat span{display:block;font-size:12px;color:var(--muted)}.cs-stat b{font-size:18px}
+.good{color:var(--green-d)}.bad{color:var(--red)}
+.cs-tabs{display:flex;border-bottom:1px solid var(--line);background:#fff}
+.cs-tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:12px 2px;font:inherit;font-size:13.5px;color:#475569;cursor:pointer;white-space:nowrap}
+.cs-tabs button.on{color:var(--primary);font-weight:700;border-bottom-color:var(--primary)}
+.cs-body{padding:12px;background:#f1f5f9}
+.cs-box{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(15,23,42,.08)}
+.cs-box h4{margin:0 0 6px;color:var(--header);font-size:15px}
+.cs-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
+.cs-row:last-child{border-bottom:0}
+.cs-l{min-width:0}.cs-r{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.cs-main{font-size:15.5px}.cs-sub{font-size:13px;color:#475569;margin-top:2px}
+.cs-amt{font-size:15.5px}
+.cs-total{font-size:18px;font-weight:700;color:var(--text)}
+.cs-line{font-size:14.5px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.pill.green{background:#dcfce7;color:#166534}.pill.blue{background:#dbeafe;color:#1e40af}.pill.yellow{background:#fef3c7;color:#92400e}
+.pill.red{background:#fee2e2;color:#b91c1c}.pill.grey{background:#e2e8f0;color:#475569}
