@@ -1,326 +1,507 @@
-/* reusable form parts: search dropdown, product rows, payment rows, counter details */
+/* ProAxis mobile - server link, offline queue, registration and the role screens */
 (function () {
   const { h, norm, sval, clean } = U;
-  const PAYMENT_MODES = ['Cash', 'UPI', 'Cheque', 'Card'];
+  const CFG = window.PROAXIS_CONFIG;
+  const REMARKS = ['Next Week Visit', 'Next Month Visit'], REMARK_DAYS = { 'next week visit': 14, 'next month visit': 28 };
+  const TERMS = ['COD', '15 Days', '30 Days', '45 Days'], TERM_DAYS = { 'COD': 0, '15 Days': 14, '30 Days': 28, '45 Days': 42 };
+  const POSITIONS = ['Head of Operations', 'Admin', 'Accountant', 'DSO'];
+  const NO_BEAT = '(no beat)';
+  const root = document.getElementById('app');
 
-  /* ------------------------------------------------------------------ search dropdown */
-  class Combo {
-    /* o: values() -> [strings], strict (only listed values), placeholder, onInput(text), onPick(value), onChange(value) */
-    constructor(o) {
-      this.values = o.values || (() => []); this.strict = !!o.strict;
-      this.onInput = o.onInput; this.onPick = o.onPick; this.onChange = o.onChange;
-      this.input = h('input', { type: 'text', class: 'inp', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '---- Select ----' });
-      this.list = h('div', { class: 'combo-list', hidden: true });
-      this.btn = h('button', { type: 'button', class: 'combo-arrow', tabindex: '-1', 'aria-label': 'Show the list' }, '▾');
-      this.el = h('div', { class: 'combo' }, this.input, this.btn, this.list);
-      this.value = ''; this.sel = -1; this.shown = [];
-      this.input.addEventListener('input', () => { this.value = this.input.value; if (this.onInput) this.onInput(this.value); this.show(true); });
-      this.input.addEventListener('focus', () => { Combo.closeOthers(this); this.show(false); });
-      this.input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== this.input) { this.commit(); this.close(); } }, 140));
-      this.input.addEventListener('click', () => { if (this.list.hidden && !this.input.disabled) { Combo.closeOthers(this); this.show(false); } });
-      this.input.addEventListener('keydown', e => this.key(e));
-      this.btn.addEventListener('mousedown', e => e.preventDefault());
-      this.btn.addEventListener('click', () => { if (this.input.disabled) return; if (!this.list.hidden) this.close(); else { this.input.focus(); this.show(false); } });
-      this.list.addEventListener('mousedown', e => e.preventDefault());               // keeps the keyboard / focus while tapping
-      this.list.addEventListener('click', e => { e.preventDefault(); const li = e.target.closest('[data-i]'); if (li) this.pick(this.shown[+li.dataset.i]); });
-      Combo.all.add(this);
-    }
-    get() { return this.value; }
-    set(v) { this.value = v || ''; this.input.value = this.value; this.last = this.value; this.close(); }
-    disable(b) { this.input.disabled = !!b; this.btn.disabled = !!b; if (b) this.close(); }
-    focus() { this.input.focus(); }
-    show(typed) {
-      const items = this.values(), q = this.input.value;
-      const exact = items.some(x => x.toLowerCase() === q.toLowerCase());
-      this.shown = (typed && clean(q) && !exact) ? U.rank(q, items) : items.slice(0, 300);
-      this.list.replaceChildren(...(this.shown.length ? this.shown.map((x, i) => h('div', { class: 'combo-item', 'data-i': i }, x))
-                                                       : [h('div', { class: 'combo-none' }, this.strict ? 'No match – pick from the list' : 'No match')]));
-      this.sel = -1; this.list.hidden = false; this.el.classList.add('open');
-      const r = this.el.getBoundingClientRect(), below = window.innerHeight - r.bottom;      // open upwards when there is no room below
-      this.list.classList.toggle('up', below < 190 && r.top > below);
-    }
-    close() { this.list.hidden = true; this.el.classList.remove('open'); this.sel = -1; }
-    pick(v) {
-      if (v === undefined) return;
-      this.input.value = v; this.value = v; this.close();
-      if (this.onInput) this.onInput(v);
-      if (this.onPick) this.onPick(v);
-      this.fireChange();
-    }
-    fireChange() { if (this.value !== this.last) { this.last = this.value; if (this.onChange) this.onChange(this.value); } }
-    commit() {                                                  // typed text -> final value
-      let t = clean(this.input.value); const m = this.values().find(x => x.toLowerCase() === t.toLowerCase());
-      if (m) t = m; else if (this.strict) { if (t) { this.input.classList.add('bad'); setTimeout(() => this.input.classList.remove('bad'), 900); } t = ''; }
-      if (this.input.value !== t) this.input.value = t;
-      if (t !== this.value) { this.value = t; if (this.onInput) this.onInput(t); }
-      this.fireChange();
-    }
-    key(e) {
-      const open = !this.list.hidden;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault(); if (!open) return this.show(false);
-        const n = this.shown.length; if (!n) return;
-        this.sel = (this.sel + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
-        [...this.list.children].forEach((c, i) => c.classList.toggle('sel', i === this.sel));
-        const c = this.list.children[this.sel]; if (c && c.scrollIntoView) c.scrollIntoView({ block: 'nearest' });
-      } else if (e.key === 'Enter') {
-        if (open && this.sel >= 0) { e.preventDefault(); this.pick(this.shown[this.sel]); }
-        else if (open && this.shown.length === 1) { e.preventDefault(); this.pick(this.shown[0]); }
-        else { this.commit(); this.close(); }
-      } else if (e.key === 'Escape') this.close();
-    }
-    static closeOthers(me) { Combo.all.forEach(c => { if (c !== me && !c.list.hidden) c.close(); }); }
-    static closeAll() { Combo.all.forEach(c => { if (!c.list.hidden) c.close(); }); }
-    static forget(list) { list.forEach(c => Combo.all.delete(c)); }
-  }
-  Combo.all = new Set();
-  document.addEventListener('click', e => { if (!e.target.closest('.combo')) Combo.closeAll(); });
-
-  const field = (label, el, cls) => h('label', { class: 'field ' + (cls || '') }, h('span', { class: 'lbl' }, label), el);
-
-  /* ------------------------------------------------------------------ product rows */
-  class ProductRow {
-    constructor(area) {
-      this.area = area; this.v = { type: '', item: '', sub: '', colour: '' }; this.default = null;
-      const titles = ['Type', 'Item', 'Sub-Item', 'Colour'];
-      this.combos = LEVELS.map((k, i) => new Combo({
-        placeholder: titles[i],
-        values: () => area.model.options(LEVELS.slice(0, i).map(x => this.v[x])),
-        onInput: t => { this.v[k] = t; area.changed(); },
-        onPick: () => this.chosen(i),
-        onChange: () => this.refreshRate(false),
-      }));
-      this.qty = h('input', { type: 'text', inputmode: 'numeric', class: 'inp', placeholder: 'No.', autocomplete: 'off' });
-      this.rate = h('input', { type: 'text', inputmode: 'decimal', class: 'inp', placeholder: 'Rate ₹', autocomplete: 'off' });
-      this.amount = h('span', { class: 'amount' }, '');
-      this.hint = h('div', { class: 'hint' });
-      this.title = h('b', { class: 'ptitle' }, 'Product');
-      const del = h('button', { type: 'button', class: 'x', 'aria-label': 'Remove this product', onclick: () => area.removeRow(this) }, '✕');
-      const resetBtn = area.showReset ? h('button', { type: 'button', class: 'btn small gray', onclick: () => this.resetRate() }, 'Reset') : null;
-      this.el = h('div', { class: 'prow' },
-        h('div', { class: 'row-between' }, this.title, del),
-        h('div', { class: 'grid2' }, ...this.combos.map((c, i) => field(titles[i], c.el))),
-        h('div', { class: 'grid3' },
-          field('No. of products', this.qty),
-          field('Rate (₹)', h('div', { class: 'ratebox' }, this.rate, resetBtn)),
-          field('Amount', this.amount)),
-        this.hint);
-      this.qty.addEventListener('input', () => area.changed());
-      this.rate.addEventListener('input', () => area.changed());
-    }
-    isFilled() {
-      if (!LEVELS.every(k => this.v[k].trim())) return false;
-      const q = this.qty.value.trim(), r = Number(this.rate.value.trim().replace(/,/g, ''));
-      return /^\d+$/.test(q) && +q > 0 && isFinite(r) && r > 0 && this.rate.value.trim() !== '';
-    }
-    key() { return LEVELS.every(k => this.v[k]) ? keyOf(this.v.type, this.v.item, this.v.sub, this.v.colour) : null; }
-    chosen(i) {
-      for (let j = i + 1; j < 4; j++) { this.v[LEVELS[j]] = ''; this.combos[j].set(''); }
-      for (let j = i + 1; j < 4; j++) {
-        const opts = this.area.model.options(LEVELS.slice(0, j).map(x => this.v[x]));
-        if (opts.length === 1) { this.v[LEVELS[j]] = opts[0]; this.combos[j].set(opts[0]); } else break;
-      }
-      this.refreshRate(true);
-    }
-    setRate(v) { this.rate.value = v; this.area.changed(); }
-    refreshRate(force) {
-      const key = this.key(), old = this.default;
-      if (!key) { this.default = null; if (force) this.setRate(''); this.hint.textContent = ''; return; }
-      const [rate, source] = this.area.rateFn(this.area.codeFn(), key);
-      this.default = rate;
-      if (force || this.rate.value.trim() === '' || this.rate.value.trim() === (old != null ? U.fmtNum(old) : '~')) this.setRate(rate != null ? U.fmtNum(rate) : '');
-      if (!this.area.showReset) this.hint.textContent = '';
-      else if (rate != null) this.hint.textContent = 'Rate source: ' + source;
-      else if (!this.area.model.hasProduct(this.v.type, this.v.item, this.v.sub, this.v.colour)) this.hint.textContent = 'New product – type its rate. It joins the dropdowns after the next sync.';
-      else this.hint.textContent = 'No previous rate – type it in';
-    }
-    resetRate() { if (this.default != null) this.setRate(U.fmtNum(this.default)); }
-    setValues(t, i, s, c, qty, rate) {
-      [t, i, s, c].forEach((x, n) => { this.v[LEVELS[n]] = x; this.combos[n].set(x); });
-      this.qty.value = String(qty); this.rate.value = U.fmtNum(rate);
-      this.refreshRate(false); this.area.changed();
-    }
-    lineAmount() { const q = +this.qty.value.trim(), r = Number(this.rate.value.trim().replace(/,/g, '')); return this.qty.value.trim() && this.rate.value.trim() && isFinite(q) && isFinite(r) ? U.mul(q, r) : null; }
-    getLine(n) {
-      const vals = LEVELS.map(k => clean(this.v[k])), q = this.qty.value.trim(), rs = this.rate.value.trim().replace(/,/g, '');
-      if (!vals.some(Boolean) && !q && !rs) return null;
-      if (!vals.every(Boolean)) throw new Error(`Product ${n}: choose Type, Item, Sub-Item and Colour.`);
-      if (!/^\d+$/.test(q) || +q <= 0) throw new Error(`Product ${n}: No. of products must be a whole number above 0.`);
-      const rate = Number(rs);
-      if (!isFinite(rate) || rate <= 0 || rs === '') throw new Error(`Product ${n}: enter a valid rate.`);
-      const [t, i, s, c] = this.area.model.canonProduct(...vals);
-      return { type: t, item: i, sub: s, colour: c, qty: +q, rate };
-    }
-    destroy() { Combo.forget(this.combos); this.el.remove(); }
-  }
-
-  class ProductRows {
-    /* o: model, rateFn(code, key)->[rate, source], codeFn(), showReset, emptyText, totalLabel, onChange() */
-    constructor(o) {
-      this.model = o.model; this.rateFn = o.rateFn; this.codeFn = o.codeFn || (() => ''); this.showReset = o.showReset !== false;
-      this.onChange = o.onChange; this.rows = []; this.cancelled = false;
-      this.host = h('div'); this.empty = h('p', { class: 'hint' }, o.emptyText || 'No product added. Tap “＋ Add Product”.');
-      this.addBtn = h('button', { type: 'button', class: 'btn ghost', onclick: () => this.addRow(true) }, '＋ Add Product');
-      this.totalEl = h('b', { class: 'total' }, '₹ 0');
-      this.bar = h('div', { class: 'row-between wrap' }, this.addBtn, h('div', { class: 'totalbox' }, (o.totalLabel || 'Total') + ': ', this.totalEl));
-      this.el = h('div', {}, this.host, this.empty, this.bar);
-      this.update();
-    }
-    addRow(focus, v) {
-      if (this.cancelled || (!v && this.rows.length && !this.rows[this.rows.length - 1].isFilled())) return null;
-      const r = new ProductRow(this); this.rows.push(r); this.host.append(r.el);
-      if (v) r.setValues(v.type, v.item, v.sub, v.colour, v.qty, v.price);
-      this.update();
-      if (focus) { r.combos[0].focus(); r.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-      return r;
-    }
-    removeRow(r) { Combo.closeAll(); r.destroy(); this.rows.splice(this.rows.indexOf(r), 1); this.update(); }
-    clear() { Combo.closeAll(); this.rows.forEach(r => r.destroy()); this.rows = []; this.update(); }
-    setCancelled(b) { this.cancelled = !!b; Combo.closeAll(); this.host.hidden = this.cancelled; this.update(); }
-    changed() { this.update(); }
-    update() {
-      this.rows.forEach((r, i) => { r.title.textContent = 'Product ' + (i + 1); });
-      this.empty.hidden = this.rows.length > 0 || this.cancelled;
-      this.addBtn.disabled = this.cancelled || (this.rows.length > 0 && !this.rows[this.rows.length - 1].isFilled());
-      let t = 0;
-      this.rows.forEach(r => { const a = r.lineAmount(); r.amount.textContent = a != null ? U.inr2(a) : ''; if (a != null) t += a; });
-      this.totalEl.textContent = this.cancelled ? '₹ 0' : U.inr(t);
-      if (this.onChange) this.onChange();
-    }
-    commitAll() { this.rows.forEach(r => r.combos.forEach(c => c.commit())); }
-    refreshRates() { this.rows.forEach(r => r.refreshRate(false)); }
-    lines() {                                                 // ValueError-style Error with what is wrong; [] while Cancelled
-      if (this.cancelled) return [];
-      const out = [];
-      this.rows.forEach((r, i) => { const l = r.getLine(i + 1); if (l) out.push(l); });
-      return out;
-    }
-  }
-
-  /* ------------------------------------------------------------------ payment rows (amount + mode) */
-  class PaymentRows {
-    constructor(o) {
-      this.rows = []; this.onChange = o && o.onChange;
-      this.host = h('div'); this.empty = h('p', { class: 'hint' }, 'No payment added. Tap “＋ Other Payment Mode” if money was received.');
-      this.addBtn = h('button', { type: 'button', class: 'btn ghost', onclick: () => this.addRow(true) }, '＋ Other Payment Mode');
-      this.totalEl = h('b', { class: 'total' }, '₹ 0');
-      this.el = h('div', {}, this.host, this.empty, h('div', { class: 'row-between wrap' }, this.addBtn, h('div', { class: 'totalbox' }, 'Total Payment Received: ', this.totalEl)));
-      this.update();
-    }
-    rowFilled(r) { const a = Number(r.amt.value.trim().replace(/,/g, '')); return r.amt.value.trim() !== '' && isFinite(a) && a > 0 && PAYMENT_MODES.includes(r.mode.value); }
-    addRow(focus) {
-      if (this.addBtn.disabled) return;
-      const amt = h('input', { type: 'text', inputmode: 'decimal', class: 'inp', placeholder: 'Amount ₹', autocomplete: 'off' });
-      const mode = h('select', { class: 'inp' });
-      const r = { amt, mode };
-      const fill = () => {
-        const used = new Set(); for (const x of this.rows) { if (x === r) break; if (x.mode.value) used.add(x.mode.value); }
-        const keep = mode.value; mode.replaceChildren(h('option', { value: '' }, '---- Select ----'), ...PAYMENT_MODES.filter(m => !used.has(m) || m === keep).map(m => h('option', { value: m }, m)));
-        mode.value = keep;
-      };
-      r.fill = fill;
-      r.el = h('div', { class: 'prow pay' }, h('div', { class: 'grid2' }, field('Payment received (₹)', amt), field('Payment mode', mode)),
-        h('button', { type: 'button', class: 'x', 'aria-label': 'Remove this payment', onclick: () => { r.el.remove(); this.rows.splice(this.rows.indexOf(r), 1); this.update(); } }, '✕'));
-      amt.addEventListener('input', () => this.update());
-      mode.addEventListener('change', () => this.update());
-      this.rows.push(r); this.host.append(r.el); fill(); this.update();
-      if (focus) { amt.focus(); r.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-    }
-    update() {
-      const seen = new Set();                                  // a mode picked in an earlier row is cleared in the rows below it
-      this.rows.forEach(r => { if (r.mode.value && seen.has(r.mode.value)) r.mode.value = ''; if (r.mode.value) seen.add(r.mode.value); });
-      this.rows.forEach(r => r.fill());
-      this.empty.hidden = this.rows.length > 0;
-      const used = new Set(this.rows.map(r => r.mode.value).filter(Boolean));
-      this.addBtn.disabled = !((!this.rows.length || this.rowFilled(this.rows[this.rows.length - 1])) && used.size < PAYMENT_MODES.length);
-      let t = 0; this.rows.forEach(r => { const a = Number(r.amt.value.trim().replace(/,/g, '')); if (isFinite(a) && a > 0) t += a; });
-      this.totalEl.textContent = U.inr(t);
-      if (this.onChange) this.onChange();
-    }
-    reset() { this.rows.forEach(r => r.el.remove()); this.rows = []; this.update(); }
-    payments() {                                              // [{mode, amount}] ; Error for a half-filled row
-      const out = [], seen = new Set();
-      this.rows.forEach((r, n) => {
-        const txt = r.amt.value.trim().replace(/,/g, ''), mode = r.mode.value, pre = this.rows.length > 1 ? `Payment ${n + 1}: ` : '';
-        if (!txt && !mode) return;
-        if (!txt) throw new Error(pre + 'Enter the payment amount or clear the payment mode.');
-        const a = Number(txt);
-        if (!isFinite(a) || a <= 0) throw new Error(pre + 'Enter a valid payment amount (or leave it empty).');
-        if (!mode) throw new Error(pre + 'Select the Payment mode (Cash/UPI/Cheque/Card).');
-        if (seen.has(mode)) throw new Error(`${mode} is used more than once. Put the whole ${mode} amount in one row.`);
-        seen.add(mode); out.push({ mode, amount: a });
-      });
-      return out;
-    }
-  }
-
-  /* ------------------------------------------------------------------ counter details */
-  class CounterDetails {
-    /* Shows what is on file for the chosen counter and boxes for what is missing. A detail kept on SOME rows of the sheets and
-       blank on others ('partial') gets a box + the existing value: empty box / same value = the blank cells are filled with it;
-       a different value fills them AND replaces the old value of that counter code everywhere. */
-    constructor(model, withType) {
-      this.model = model; this.withType = withType; this.key = null;
-      this.info = h('div', { class: 'hint' });
-      this.mobile = h('input', { type: 'text', inputmode: 'tel', class: 'inp', placeholder: 'Mobile No.', autocomplete: 'off' });
-      this.gstin = h('input', { type: 'text', class: 'inp', placeholder: 'GSTIN / PAN', autocomplete: 'off', autocapitalize: 'characters' });
-      this.typeCombo = new Combo({ placeholder: 'Counter type', values: () => [...this.model.counterTypes].sort() });
-      this.fm = field('Mobile No.', this.mobile); this.ft = field('Counter type', this.typeCombo.el); this.fg = field('GSTIN / PAN', this.gstin);
-      this.title = h('div', { class: 'hint strong' });
-      this.notes = h('div', { class: 'note' });
-      this.box = h('div', { class: 'cdbox', hidden: true }, this.title, h('div', { class: 'grid3' }, this.fm, this.ft, this.fg), this.notes);
-      this.el = h('div', {}, this.info, this.box);
-      this.update('', '');
-    }
-    update(market, name) {
-      const c = this.model.findCounter(market, name); name = clean(name);
-      const key = norm(market) + '|' + norm(name);
-      if (key !== this.key) { this.key = key; this.mobile.value = ''; this.gstin.value = ''; this.typeCombo.set(''); }
-      let show = {}, title = '', notes = [];
-      if (c) {
-        const na = 'not on file', partial = this.model.partialFields(c.code);
-        this.info.textContent = `Code ${c.code}   |   Mobile No.: ${c.mobile || na}   |   ` + (this.withType ? `Counter type: ${c.type || na}   |   ` : '') + `GSTIN / PAN: ${c.gstin || na}`;
-        show = { mobile: !c.mobile || partial.has('mobile'), gstin: !c.gstin || partial.has('gstin'), type: this.withType && !c.type };
-        [['mobile', 'Mobile No.'], ['gstin', 'GSTIN/PAN']].forEach(([k, lbl]) => {
-          if (partial.has(k) && c[k]) notes.push(`There is an existing ${lbl}: ${c[k]}, but some fields are empty. Leave the box empty (or type the same one) to fill them with it; a different ${lbl} fills them and replaces the old one.`);
-        });
-        title = 'Add the missing details – optional:';
-      } else if (name && this.withType) {
-        this.info.textContent = ''; show = { mobile: true, gstin: true, type: true }; title = 'New counter – optional details:';
-      } else this.info.textContent = '';
-      this.fm.hidden = !show.mobile; this.fg.hidden = !show.gstin; this.ft.hidden = !show.type;
-      this.box.hidden = !(show.mobile || show.gstin || show.type);
-      this.title.textContent = title; this.notes.textContent = notes.join('\n');
-    }
-    reset() { this.key = null; this.mobile.value = ''; this.gstin.value = ''; this.typeCombo.set(''); this.update('', ''); }
-    commit() { this.typeCombo.commit(); }
-    /* -> {mobile, ctype, gstin, fill, replace}: values for the new row, details to fill into the counter's older rows, and which of those REPLACE */
-    resolve(existing) {
-      const cur = existing || {}, partial = existing ? this.model.partialFields(cur.code) : new Set();
-      const tm = U.fmtMobile(this.mobile.value);
-      if (tm === null) throw new Error('Mobile No. must be a 10-digit number (e.g. 98765 43210). Fix it or leave it empty.');
-      const tg = U.cleanGstin(this.gstin.value);
-      if (tg && !U.validGstin(tg)) throw new Error('GSTIN must be 15 characters or PAN 10 characters (e.g. ABCDE1234F). Fix it or leave it empty.');
-      let tt = this.withType && !cur.type ? clean(this.typeCombo.get()) : '';
-      if (tt) tt = [...this.model.counterTypes].find(x => x.toLowerCase() === tt.toLowerCase()) || tt;
-      const fill = {}, replace = [];
-      const digits = x => x.replace(/\D/g, '').slice(-10);
-      const pick = (k, typed, same) => {
-        const old = cur[k] || '';
-        if (!old) { if (typed && existing) fill[k] = typed; return typed; }
-        if (partial.has(k)) {
-          if (typed && !same(typed, old)) { fill[k] = typed; replace.push(k); return typed; }
-          fill[k] = old; return old;
+  /* ------------------------------------------------------------------ storage (every access guarded) */
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('pa_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('pa_' + k, JSON.stringify(v)); } catch (e) {} },
+    del(k) { try { localStorage.removeItem('pa_' + k); } catch (e) {} },
+  };
+  const mem = {};                                                          // fallback when storage is blocked
+  const S = {
+    get token() { return store.get('token', null) || mem.token || null; },
+    profile: store.get('profile', null), snapshot: store.get('snapshot', null), verifiedAt: store.get('verifiedAt', 0),
+    outbox: store.get('outbox', []), failed: store.get('failed', []),
+  };
+  const save = k => store.set(k, S[k]);
+  const deviceType = () => { const u = navigator.userAgent; if (/iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1)) return 'Tablet'; if (/Android/.test(u)) return /Mobile/.test(u) ? 'Mobile Phone' : 'Tablet'; if (/iPhone|iPod/.test(u)) return 'Mobile Phone'; return 'Mobile Phone'; };
+  /* Location: the device's GPS ("lat, lon") when the user allows it, else an approximate position from the IP address */
+  const Loc = {
+    value: '', updated: 0, busy: false,
+    refresh() {
+      if (this.busy) return; this.busy = true;
+      const done = v => { if (v) this.value = v; this.updated = Date.now(); this.busy = false; };
+      const ip = async () => {
+        for (const [url, get] of [['https://ipwho.is/', j => (j.success === false ? null : [j.latitude, j.longitude])], ['https://ipapi.co/json/', j => [j.latitude, j.longitude]]]) {
+          try { const c = new AbortController(); setTimeout(() => c.abort(), 6000); const p = get(await (await fetch(url, { signal: c.signal })).json()); if (p && isFinite(p[0]) && isFinite(p[1])) return Number(p[0]).toFixed(6) + ', ' + Number(p[1]).toFixed(6) + ' (IP approx)'; } catch (e) {}
         }
-        return old;
+        return '';
       };
-      const mobile = pick('mobile', tm, (a, b) => digits(a) === digits(b));
-      const gstin = pick('gstin', tg, (a, b) => a.toUpperCase() === U.cleanGstin(b));
-      if (existing && tt) fill.type = tt;
-      return { mobile, ctype: cur.type || tt, gstin, fill, replace: replace.sort() };
+      if (navigator.geolocation) navigator.geolocation.getCurrentPosition(
+        pos => done(pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6)),
+        () => ip().then(done), { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 });
+      else ip().then(done);
+    },
+    get() { if (Date.now() - this.updated > 120000) this.refresh(); return this.value; },
+  };
+  const deviceId = () => { let d = store.get('device', null); if (!d) { d = U.uuid(); store.set('device', d); } return d; };
+
+  /* ------------------------------------------------------------------ API */
+  async function api(action, body, timeoutMs) {
+    if (!CFG.API_URL || CFG.API_URL.indexOf('PASTE') === 0) throw new ApiError('The app is not set up yet (API_URL in js/config.js).', true);
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs || 45000);
+    let res;
+    try {
+      res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action }, body)), signal: ctl.signal, redirect: 'follow' });
+    } catch (e) { throw new ApiError('No connection to the server.', false, true); } finally { clearTimeout(t); }
+    let j; try { j = await res.json(); } catch (e) { throw new ApiError('The server sent an unexpected answer. Try again.', false, true); }
+    if (!j.ok) throw new ApiError(j.error || 'Server error', !!j.permanent, false, j.code);
+    return j;
+  }
+  class ApiError extends Error { constructor(m, permanent, offline, code) { super(m); this.permanent = !!permanent; this.offline = !!offline; this.code = code; } }
+  const authed = (action, body, to) => api(action, Object.assign({ deviceId: deviceId(), token: S.token }, body), to);
+
+  /* ------------------------------------------------------------------ model + overlay of not-yet-uploaded entries */
+  const model = new Model();
+  function rebuildModel() {
+    model.load(S.snapshot || {});
+    S.outbox.forEach(j => model.applyOverlay(j.overlay));
+  }
+
+  /* ------------------------------------------------------------------ sync */
+  let syncing = false, lastRefresh = 0, online = navigator.onLine, statusEl = null, currentView = null;
+  const pending = () => S.outbox.length;
+  function setStatus() {
+    if (!statusEl) return;
+    const bits = [];
+    if (pending()) bits.push(pending() + ' waiting to upload');
+    if (S.failed.length) bits.push(S.failed.length + ' need attention');
+    statusEl.textContent = bits.length ? bits.join(' · ') : (online ? 'Synced' : 'Offline');
+    statusEl.className = 'status ' + (S.failed.length ? 'bad' : pending() || !online ? 'warn' : 'ok');
+  }
+  async function flush() {
+    while (S.outbox.length) {
+      const job = S.outbox[0];
+      try { await authed('submit', { job: { id: job.id, parts: job.parts } }); S.outbox.shift(); save('outbox'); }
+      catch (e) {
+        if (e.offline) return false;
+        if (e.code === 'removed' || e.code === 'blocked') throw e;
+        if (e.permanent) { S.outbox.shift(); S.failed.push({ label: job.label, error: e.message, id: job.id, at: Date.now() }); save('outbox'); save('failed'); }
+        else return false;                               // temporary server trouble: keep it, try later
+      }
+    }
+    return true;
+  }
+  let blocked = false;
+  function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name; }
+  async function bootstrapNow() {
+    const before = S.profile;
+    const r = await authed('bootstrap', {});
+    S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
+    save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
+    if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + r.profile.position); home(); }       // new role -> new screens
+    else if (currentView && currentView.onData) currentView.onData();
+  }
+  async function sync(force) {
+    if (syncing || !S.token) return;
+    syncing = true; setStatus();
+    try {
+      if (blocked) { await authed('whoami', {}); blocked = false; start(); return; }     // throws while still blocked
+      const ok = await flush();
+      if (ok) {
+        if (force || Date.now() - lastRefresh > CFG.REFRESH_SECS * 1000 - 2000 || !S.snapshot) await bootstrapNow();
+        else {                                                            // quick check: blocked / removed / role changed by the owner?
+          const r = await authed('whoami', {});
+          if (profileChanged(S.profile, r.profile)) await bootstrapNow();
+        }
+      }
+      online = true;
+    } catch (e) {
+      if (e.code === 'removed') { deregister('Your registration was removed by the owner. Register again to continue.'); return; }
+      if (e.code === 'blocked') { blocked = true; blockedView(); return; }
+      if (e.offline) online = false;
+    } finally { syncing = false; setStatus(); }
+  }
+  function blockedView() {
+    currentView = null; statusEl = null;
+    root.replaceChildren(h('header', { class: 'top' }, h('span', { class: 'logo' }, 'ProAxis')),
+      h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Access stopped'),
+        h('p', {}, 'The owner has blocked this device, so ProAxis cannot be used on it. The app starts working again by itself if the owner sets the Status back to Active.'),
+        h('button', { class: 'btn big', onclick: () => sync(true) }, 'Check again'))));
+  }
+  function deregister(msg) {
+    ['token', 'profile', 'snapshot', 'verifiedAt', 'outbox', 'failed'].forEach(k => store.del(k));
+    S.profile = null; S.snapshot = null; S.outbox = []; S.failed = []; delete mem.token;
+    start(msg);
+  }
+  const submitJob = job => { S.outbox.push(job); save('outbox'); model.applyOverlay(job.overlay); setStatus(); sync(false); };
+  window.addEventListener('online', () => { online = true; sync(true); });
+  window.addEventListener('offline', () => { online = false; setStatus(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(true); });
+  setInterval(() => { if (!document.hidden) { sync(false); if (currentView && currentView.tick) currentView.tick(); } }, 20000);
+
+  /* ------------------------------------------------------------------ shell (top bar + view) */
+  function shell(title, onBack) {
+    statusEl = h('span', { class: 'status' });
+    const bar = h('header', { class: 'top' },
+      onBack ? h('button', { class: 'back', onclick: onBack, 'aria-label': 'Home' }, '←') : h('span', { class: 'logo' }, 'ProAxis'),
+      h('div', { class: 'who' }, h('b', {}, title || ''), h('small', {}, `${S.profile.name} · ${S.profile.position}`)),
+      statusEl, h('button', { class: 'sync', onclick: () => { sync(true); U.toast('Syncing…'); }, 'aria-label': 'Sync now' }, '↻'));
+    const main = h('main', { class: 'page' });
+    root.replaceChildren(bar, main);
+    setStatus();
+    return main;
+  }
+  const msgBox = () => h('div', { class: 'msg', role: 'status' });
+  const say = (el, text, bad) => { el.textContent = text; el.className = 'msg ' + (bad ? 'bad' : 'ok'); if (text) el.scrollIntoView({ block: 'nearest' }); };
+  const submitBar = (label, onSubmit, onClear, msg) => h('div', { class: 'submitbar' }, h('button', { class: 'btn big', onclick: onSubmit }, label), h('button', { class: 'btn gray', onclick: onClear }, 'Clear form'), msg);
+
+  /* ------------------------------------------------------------------ registration */
+  function registerView(notice) {
+    currentView = null;
+    const st = { step: 1, requestId: null, sentTo: '' };
+    const v = { position: '', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
+    const box = h('div', { class: 'card' });
+    root.replaceChildren(h('header', { class: 'top' }, h('span', { class: 'logo' }, 'ProAxis')), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
+    const err = msgBox();
+    const inp = (label, key, attrs) => { const i = h('input', Object.assign({ class: 'inp', value: v[key], autocomplete: 'off' }, attrs || {})); i.addEventListener('input', () => { v[key] = i.value; }); return field(label, i); };
+    function step1() {
+      Loc.refresh();
+      const sel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...POSITIONS.map(p => h('option', { value: p }, p)));
+      sel.value = v.position;
+      const headBox = h('div');
+      const draw = () => { headBox.replaceChildren(...(!v.position ? [] : v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
+      sel.addEventListener('change', () => { v.position = sel.value; draw(); });
+      draw();
+      const go = h('button', { class: 'btn big', onclick: async () => {
+        if (!v.position) { say(err, 'Select the Position first.', true); return; }
+        go.disabled = true; say(err, '');
+        try {
+          const r = await api('register_request', Object.assign({ deviceType: deviceType(), location: Loc.get() }, v));
+          st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
+        } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
+      } }, 'Send OTP');
+      box.replaceChildren(h('h2', {}, 'Register this device'), field('Position', sel), inp('Your name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
+        inp('Email ID', 'email', { type: 'email', inputmode: 'email', autocapitalize: 'off' }), headBox, go, err);
+    }
+    function step2() {
+      const otp = h('input', { class: 'inp otp', inputmode: 'numeric', maxlength: '6', placeholder: '6-digit OTP', autocomplete: 'one-time-code' });
+      const go = h('button', { class: 'btn big', onclick: async () => {
+        go.disabled = true; say(err, '');
+        try {
+          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: deviceType(), location: Loc.get() }, v));
+          store.set('token', r.token); mem.token = r.token; S.profile = r.profile; save('profile');
+          box.replaceChildren(h('h2', {}, 'This device has been registered'), h('button', { class: 'btn big', onclick: () => start() }, 'Next'));
+        } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
+      } }, 'Verify');
+      box.replaceChildren(h('h2', {}, 'Enter the OTP'), h('p', { class: 'hint' }, 'The OTP was emailed to ' + st.sentTo + '. Ask them for it.'), otp, go,
+        h('button', { class: 'btn gray', onclick: step1 }, 'Back'), err);
+      otp.focus();
+    }
+    step1();
+  }
+
+  /* ------------------------------------------------------------------ homes */
+  const card = (title, caption, cls, fn) => h('button', { class: 'homecard ' + cls, onclick: fn }, h('b', {}, title), h('span', {}, caption));
+  function failedList() {
+    if (!S.failed.length) return null;
+    return h('div', { class: 'card warnbox' }, h('b', {}, 'These entries could not be saved:'),
+      ...S.failed.map((f, i) => h('div', { class: 'failed' }, h('div', {}, f.label), h('small', {}, f.error), h('button', { class: 'btn small gray', onclick: () => { S.failed.splice(i, 1); save('failed'); home(); } }, 'Discard'))));
+  }
+  function home() {
+    const pos = S.profile.position;
+    const main = shell('Home');
+    currentView = { onData() {} };
+    if (pos === 'DSO') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
+    else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
+    else main.append(h('p', { class: 'hint center' }, 'Nothing to show here yet.'));
+    const fl = failedList(); if (fl) main.append(fl);
+  }
+
+  /* ------------------------------------------------------------------ shared pieces */
+  const dateBox = (iso, onChange) => { const i = h('input', { type: 'date', class: 'inp', value: iso }); i.addEventListener('change', () => { onChange && onChange(i.value); }); i.get = () => i.value; return i; };
+  const roundRupee = x => Math.round(x + 1e-9);
+  const plain = x => (Number.isInteger(x) ? x : +x.toFixed(2));
+  const marketCodeOf = U.marketCode;
+  const needIso = s => { if (!U.parseIso(s)) throw new Error('Enter a valid date.'); return s; };
+  function tryRun(fn, msg) { try { return fn(); } catch (e) { say(msg, e.message, true); return undefined; } }
+
+  /* ------------------------------------------------------------------ DSO: visit */
+  function visitView() {
+    const main = shell('Log Visits', home);
+    Loc.refresh();
+    const msg = msgBox(), dso = S.profile.dso || S.profile.name;
+    let outBeat = false, calBeat = '';
+    const date = { get: () => U.todayIso() };                       // no Date box for a DSO: the date is always today's
+    const beatEl = h('input', { class: 'inp', readonly: true, placeholder: 'Beat' });
+    const outTick = h('input', { type: 'checkbox' });
+    const market = new Combo({ placeholder: 'Market', values: () => (outBeat ? model.sheetMarkets() : model.marketsFor(beatEl.value || calBeat)), onInput: () => counterChanged(), onChange: () => { counter.set(''); counterChanged(); } });
+    const counter = new Combo({ placeholder: 'Counter', values: () => model.countersFor(market.get()), onInput: () => counterChanged(), onChange: () => counterChanged() });
+    const cd = new CounterDetails(model, true);
+    const remarks = new Combo({ placeholder: 'Remarks (type or pick)', values: () => REMARKS, onInput: () => prio() });
+    const prioEl = h('div', { class: 'hint' });
+    const cooler = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
+    const counterCode = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : (clean(counter.get()) && clean(market.get()) ? U.counterCode(clean(market.get()), clean(counter.get())) : ''); };
+    let terms, termsField;
+    const area = new ProductRows({ model, rateFn: (code, key) => model.rateFor(code, key), codeFn: counterCode, emptyText: 'No product added. Tap “＋ Add Product” to start the order (leave it empty for a visit without an order).', totalLabel: 'Total Order Amount', onChange: () => termsUpdate() });
+    terms = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...TERMS.map(t => h('option', { value: t }, t)));
+    termsField = field('Payment terms', terms);
+    const pay = new PaymentRows();
+    const counterChanged = () => { cd.update(market.get(), counter.get()); area.refreshRates(); if (counter.get()) Loc.get(); };
+    function termsUpdate() { if (!termsField) return; termsField.hidden = !area.rows.length || area.cancelled; if (termsField.hidden) terms.value = ''; }
+    function syncBeat() {
+      const d = date.get(), b = U.parseIso(d) ? model.beatForDate(d) : '';
+      if (b !== calBeat) { calBeat = b; outBeat = false; outTick.checked = false; beatEl.value = b; market.set(''); counter.set(''); counterChanged(); }
+      prio();
+    }
+    function prio() {
+      const days = REMARK_DAYS[norm(remarks.get())], d = date.get();
+      prioEl.textContent = days && U.parseIso(d) ? '→ Priority Visit Date: ' + U.dmy(U.addDays(d, days)) : '';
+    }
+    outTick.addEventListener('change', () => { outBeat = outTick.checked; beatEl.value = outBeat ? '' : calBeat; market.set(''); counter.set(''); counterChanged(); });
+    main.append(
+      h('section', { class: 'card' }, h('h3', {}, 'Visit'),
+        field("Beat (today's)", h('div', { class: 'beatbox' }, beatEl, h('label', { class: 'tick' }, outTick, ' Out of Beat'))),
+        field('Market', market.el), field('Counter', counter.el), cd.el,
+        field('Remarks', remarks.el), prioEl, field('Interest in Cooler', cooler)),
+      h('section', { class: 'card' }, h('h3', {}, 'Order – products, quantity and rate'), area.el, termsField),
+      h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
+      submitBar('SUBMIT VISIT', submit, () => clearForm(true), msg));
+    termsUpdate(); syncBeat();
+    currentView = { onData() { syncBeat(); area.refreshRates(); counterChanged(); }, tick: syncBeat };     // tick: a new day starts -> its beat
+
+    function clearForm() {
+      market.set(''); counter.set(''); remarks.set(''); cooler.value = ''; cd.reset(); area.clear(); terms.value = ''; pay.reset(); counterChanged(); prio(); termsUpdate();
+    }
+    function submit() {
+      [market, counter, remarks, cd.typeCombo].forEach(c => c.commit()); area.commitAll();
+      const job = tryRun(build, msg); if (!job) return;
+      submitJob(job);
+      say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      clearForm(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function build() {
+      const ds = needIso(date.get());
+      const beat = outBeat ? '' : clean(beatEl.value);
+      if (!beat && !outBeat) throw new Error('No beat found for this date (the Year Calendar has not loaded, or the date is outside it).\nCheck the date, or connect to the internet, wait for the sync and try again.');
+      const mk = clean(market.get()).toUpperCase(), cname = clean(counter.get());
+      if (!mk) throw new Error('Enter the Market.'); if (!cname) throw new Error('Enter the Counter.');
+      const lines = area.lines();
+      const tm = lines.length ? terms.value : '';
+      if (lines.length && !tm) throw new Error('This order has products but no Payment terms.\nSelect the Payment terms (COD, 15, 30 or 45 Days).');
+      let rem = clean(remarks.get()); rem = REMARKS.find(x => x.toLowerCase() === rem.toLowerCase()) || rem;
+      const pdays = REMARK_DAYS[norm(rem)] || 0;
+      const pays = pay.payments();
+      const existing = model.findCounter(mk, cname);
+      const code = existing ? existing.code : U.counterCode(mk, cname), name = existing ? existing.name : cname;
+      const { mobile, ctype, gstin, fill, replace } = cd.resolve(existing);
+      const newMarket = beat && !model.marketsFor(beat).some(m => m.toUpperCase() === mk) && (model.dsoMarkets || {})[beat.toLowerCase()] ? { beat, market: mk } : null;
+      const orders = [];
+      if (lines.length) {
+        const total = lines.reduce((a, l) => a + l.qty * l.rate, 0);
+        const nd = TERM_DAYS[tm] ? U.addDays(ds, TERM_DAYS[tm]) : '';
+        const wk = nd ? (model.beatForDate(nd) || U.weekday(nd)) : '';
+        lines.forEach(l => orders.push({ dso, 'order no.': '', 'orders taken': lines.length, 'order value': roundRupee(total), 'counter name': name, 'market code': marketCodeOf(mk), 'counter code': code, date: ds, 'payment terms': tm, 'next payment date': nd, weekday: wk, type: l.type, item: l.item, 'sub item': l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate), 'price x qty': plain(U.mul(l.qty, l.rate)) }));
+      }
+      const visit = { dso, date: ds, beat, market: mk, 'counter name': name, 'counter code': code, mobile, 'counter type': ctype, 'gstin/pan': gstin, orders: lines.length, productive: lines.length ? 'YES' : 'NO', remarks: rem, 'interest in cooler': cooler.value, 'priority visit date': pdays ? U.addDays(ds, pdays) : '', location: Loc.get() };
+      const parts = [];
+      if (fill && Object.keys(fill).length) parts.push({ kind: 'fill', code, values: fill, replace });
+      parts.push({ sheet: 'Visits', rows: [visit] });
+      if (newMarket) parts.push({ kind: 'market', beat: newMarket.beat, market: newMarket.market });
+      if (orders.length) parts.push({ sheet: 'Orders', rows: orders });
+      if (pays.length) {
+        const row = { date: ds, market: mk, 'counter name': name, 'counter code': code, total: plain(pays.reduce((a, p) => a + p.amount, 0)) };
+        pays.forEach(p => { row[p.mode.toLowerCase()] = plain(p.amount); });
+        parts.push({ sheet: 'Payments Received', rows: [row] });
+      }
+      const label = name + (orders.length ? '  |  order ₹' + roundRupee(orders[0]['order value']).toLocaleString('en-IN') : '');
+      return { id: U.uuid(), label, parts,
+        overlay: { visit, orders, newCounter: existing ? null : { market: mk, name, code, mobile, type: ctype, gstin }, newMarket: newMarket ? { beat, market: mk } : null, fill: fill && Object.keys(fill).length ? Object.assign({ code, replace }, fill) : null } };
     }
   }
 
-  window.Combo = Combo; window.ProductRows = ProductRows; window.PaymentRows = PaymentRows; window.CounterDetails = CounterDetails;
-  window.field = field; window.PAYMENT_MODES = PAYMENT_MODES;
+  /* ------------------------------------------------------------------ DSO: payment */
+  function payView() {
+    const main = shell('Log Payments', home);
+    const msg = msgBox(), dso = S.profile.dso || S.profile.name;
+    const date = { get: () => U.todayIso() };                       // no Date box for a DSO: the date is always today's
+    const info = h('div', { class: 'hint' });
+    const market = new Combo({ placeholder: 'Market', strict: true, values: () => model.allMarkets(), onChange: () => { counter.set(''); upd(); } });
+    const counter = new Combo({ placeholder: 'Counter', strict: true, values: () => model.countersFor(market.get()), onChange: upd });
+    const pay = new PaymentRows();
+    function upd() {
+      const c = model.findCounter(market.get(), counter.get());
+      info.textContent = c ? `Code ${c.code}   |   Mobile No.: ${c.mobile || 'not on file'}   |   Counter type: ${c.type || 'not on file'}` : '';
+    }
+    function clearForm() { market.set(''); counter.set(''); pay.reset(); upd(); }
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Counter'), field('Market', market.el), field('Counter', counter.el), info),
+      h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
+      submitBar('SUBMIT PAYMENT', () => {
+        [market, counter].forEach(c => c.commit());
+        const job = tryRun(() => {
+          const ds = needIso(date.get()), mk = clean(market.get()).toUpperCase();
+          if (!mk) throw new Error('Select the Market.');
+          if (!clean(counter.get())) throw new Error('Select the Counter.');
+          const c = model.findCounter(mk, counter.get());
+          if (!c) throw new Error('Pick the Counter from the list (a payment can only be logged for an existing counter).');
+          const pays = pay.payments();
+          if (!pays.length) throw new Error('No payment added.\nTap “＋ Other Payment Mode”, enter the amount and select the payment mode.');
+          const total = pays.reduce((a, p) => a + p.amount, 0);
+          const row = { date: ds, market: mk, 'counter name': c.name, 'counter code': c.code, total: plain(total) };
+          pays.forEach(p => { row[p.mode.toLowerCase()] = plain(p.amount); });
+          return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
+        }, msg);
+        if (!job) return;
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clearForm();
+      }, clearForm, msg));
+    currentView = { onData: upd };
+  }
+
+  /* ------------------------------------------------------------------ Accountant */
+  function inwardView() {
+    const main = shell('Log Inward Invoices', home), msg = msgBox();
+    const date = dateBox(U.todayIso());
+    const area = new ProductRows({ model, rateFn: (c, k) => model.buyRateFor(c, k), emptyText: 'No product added. Tap “＋ Add Product” to start the inward invoice.', totalLabel: 'Total Inward Amount' });
+    const clear = () => area.clear();
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Inward invoice'), field('Date', date)),
+      h('section', { class: 'card' }, h('h3', {}, 'Products – quantity and buy price'), area.el),
+      submitBar('SUBMIT INWARD INVOICE', () => {
+        area.commitAll();
+        const job = tryRun(() => {
+          const ds = needIso(date.get()), lines = area.lines();
+          if (!lines.length) throw new Error('Add at least one product.');
+          const rows = lines.map(l => ({ date: ds, type: l.type, item: l.item, 'sub-item': l.sub, colour: l.colour, 'inwards qty': l.qty, 'buy price': plain(l.rate), 'qty x price': plain(U.mul(l.qty, l.rate)) }));
+          const total = lines.reduce((a, l) => a + l.qty * l.rate, 0);
+          return { id: U.uuid(), label: 'inward invoice ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Inwards', rows }], overlay: { inwards: rows } };
+        }, msg);
+        if (!job) return;
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online')); clear();
+      }, clear, msg));
+    currentView = { onData() { area.refreshRates(); } };
+  }
+
+  const invoiceRow = (ds, ino, orderNo, mk, cname, code, mobile, gstin, billing, ln) => {
+    const r = { date: ds, 'invoice no.': ino, 'order no.': orderNo, market: mk, 'counter name': cname, 'counter code': code, mobile, 'gstin/pan': gstin };
+    if (ln) Object.assign(r, { 'billing value': billing, type: ln.type, item: ln.item, 'sub item': ln.sub, colour: ln.colour, qty: ln.qty, price: plain(ln.rate), 'price x qty (for sum ref)': plain(U.mul(ln.qty, ln.rate)) });
+    return r;
+  };
+
+  function outwardView() {
+    const main = shell('Log Outward Invoices', home), msg = msgBox();
+    const date = dateBox(U.todayIso(), () => invChanged());
+    const serial = h('input', { class: 'inp', inputmode: 'numeric', placeholder: 'Serial No.', autocomplete: 'off' });
+    const invNo = h('input', { class: 'inp', readonly: true, placeholder: 'Invoice Number' });
+    const market = new Combo({ placeholder: 'Market', strict: true, values: () => model.everyMarket(), onChange: () => { counter.set(''); counterChanged(); } });
+    const counter = new Combo({ placeholder: 'Counter', strict: true, values: () => model.countersFor(market.get()), onChange: () => counterChanged() });
+    const cd = new CounterDetails(model, false);
+    const code = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : ''; };
+    const area = new ProductRows({ model, rateFn: (c, k) => model.rateFor(c, k), codeFn: code, emptyText: 'No product added. Tap “＋ Add Product” to start the invoice.', totalLabel: 'Total Invoice Amount' });
+    function invChanged() { const sr = serial.value.trim(), d = date.get(); invNo.value = /^\d+$/.test(sr) && +sr > 0 && U.parseIso(d) ? U.invoiceNo(sr, d) : ''; }
+    function counterChanged() { cd.update(market.get(), counter.get()); area.refreshRates(); }
+    serial.addEventListener('input', invChanged);
+    const clear = () => { serial.value = ''; market.set(''); counter.set(''); cd.reset(); area.clear(); invChanged(); };
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Outward invoice'),
+      h('div', { class: 'grid2' }, field('Date', date), field('Serial Number', serial)), field('Invoice Number', invNo), field('Market', market.el), field('Counter', counter.el), cd.el),
+      h('section', { class: 'card' }, h('h3', {}, 'Invoice – products, quantity and rate'), area.el),
+      submitBar('SUBMIT INVOICE', () => {
+        [market, counter].forEach(c => c.commit()); area.commitAll();
+        const job = tryRun(() => {
+          const ds = needIso(date.get()), sr = serial.value.trim();
+          if (!/^\d+$/.test(sr) || +sr === 0) throw new Error('Enter the Serial Number (digits only).');
+          const ino = U.invoiceNo(sr, ds);
+          if (Object.keys(model.invoices).some(k => k.toLowerCase() === ino.toLowerCase())) throw new Error(`Invoice ${ino} already exists in the Invoice Record.\nCheck the Serial Number (use Edit Previous Invoice to change an existing invoice).`);
+          const mk = clean(market.get()).toUpperCase();
+          if (!mk) throw new Error('Select the Market.');
+          const c = model.findCounter(mk, counter.get());
+          if (!c) throw new Error('Select the Counter from the list (it must be a counter of this market).');
+          const lines = area.lines();
+          if (!lines.length) throw new Error('Add at least one product.');
+          const { mobile, gstin, fill, replace } = cd.resolve(c);
+          const billing = roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0));
+          const rows = lines.map(l => invoiceRow(ds, ino, '', mk, c.name, c.code, mobile, gstin, billing, l));
+          const data = { date: ds, orderNo: '', market: mk, counterName: c.name, counterCode: c.code, mobile, gstin, lines: lines.map(l => ({ type: l.type, item: l.item, sub: l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate) })) };
+          const parts = []; const hasFill = fill && Object.keys(fill).length;
+          if (hasFill) parts.push({ kind: 'fill', code: c.code, values: fill, replace });
+          parts.push({ sheet: 'Invoice Record', rows });
+          return { id: U.uuid(), label: `${ino}  |  ${c.name}  |  ₹${billing.toLocaleString('en-IN')}`, parts, overlay: { invoice: { no: ino, data }, fill: hasFill ? Object.assign({ code: c.code, replace }, fill) : null } };
+        }, msg);
+        if (!job) return;
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clear();
+      }, clear, msg));
+    invChanged();
+    currentView = { onData() { counterChanged(); } };
+  }
+
+  function editView() {
+    const main = shell('Edit Previous Invoice', home), msg = msgBox();
+    const serial = h('input', { class: 'inp', inputmode: 'numeric', placeholder: 'Serial No.', autocomplete: 'off' });
+    const invNo = h('input', { class: 'inp', readonly: true, placeholder: 'Invoice Number' });
+    const note = h('div', { class: 'hint' }, 'Type the Serial Number of the invoice.');
+    const detail = h('div', { hidden: true });
+    const ro = {}; const detailGrid = h('div', { class: 'grid2' });
+    [['date', 'Date'], ['market', 'Market'], ['counter', 'Counter'], ['mobile', 'Mobile No.'], ['gstin', 'GSTIN/PAN']].forEach(([k, t]) => { ro[k] = h('input', { class: 'inp', readonly: true }); detailGrid.append(field(t, ro[k])); });
+    const cancelBox = h('input', { type: 'checkbox' });
+    let current = null, hdr = null;
+    const area = new ProductRows({ model, rateFn: () => [null, ''], showReset: false, emptyText: 'No product on this invoice.', totalLabel: 'Total Invoice Amount' });
+    const resetBtn = h('button', { class: 'btn small gray', onclick: () => { if (current) load(current); } }, 'Reset');
+    cancelBox.addEventListener('change', () => area.setCancelled(cancelBox.checked));
+    detail.append(h('section', { class: 'card' }, h('h3', {}, 'Invoice details (read only)'), detailGrid, h('label', { class: 'tick' }, cancelBox, ' Cancelled')),
+      h('section', { class: 'card' }, h('div', { class: 'row-between' }, h('h3', {}, 'Products – change, add or remove'), resetBtn), area.el),
+      submitBar('SUBMIT CHANGES', submit, () => { serial.value = ''; lookup(); }, h('span')));
+    function unload() { current = hdr = null; detail.hidden = true; }
+    function lookup() {
+      const raw = serial.value.trim();
+      if (!/^\d+$/.test(raw) || +raw === 0) { unload(); invNo.value = ''; note.textContent = raw ? 'The Serial Number is digits only.' : 'Type the Serial Number of the invoice.'; note.className = 'hint'; return; }
+      const n = +raw, today = U.invoiceNo(n, U.todayIso());
+      const cands = Object.keys(model.invoices).filter(k => new RegExp(`^IS/${n}/\\d\\d-\\d\\d$`, 'i').test(k));
+      const no = cands.find(k => k.toLowerCase() === today.toLowerCase()) || cands.sort().pop();
+      invNo.value = no || today;
+      if (!no) { unload(); note.textContent = 'No outward invoice with this number was found.'; note.className = 'hint bad'; }
+      else if (no !== current) load(no);
+    }
+    function load(no) {
+      const inv = model.invoices[no]; current = no; hdr = inv;
+      ro.date.value = U.dmy(inv.date); ro.market.value = inv.market; ro.counter.value = inv.counterName; ro.mobile.value = inv.mobile; ro.gstin.value = inv.gstin;
+      cancelBox.checked = false; area.setCancelled(false); area.clear();
+      inv.lines.forEach(l => area.addRow(false, l));
+      cancelBox.checked = !inv.lines.length; area.setCancelled(cancelBox.checked);
+      note.textContent = 'Invoice found. Change the products below, or tick Cancelled.'; note.className = 'hint ok'; say(msg, '');
+      detail.hidden = false;
+    }
+    function submit() {
+      area.commitAll();
+      const job = tryRun(() => {
+        if (!current) throw new Error('Type the Serial Number of an existing outward invoice first.');
+        const lines = area.lines(), inv = hdr;
+        const mk = [inv.date, current, inv.orderNo, inv.market, inv.counterName, inv.counterCode, inv.mobile, inv.gstin];
+        let rows, billing = 0;
+        if (lines.length) { billing = roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0)); rows = lines.map(l => invoiceRow(...mk, billing, l)); }
+        else rows = [invoiceRow(...mk)];
+        const data = Object.assign({}, inv, { lines: lines.map(l => ({ type: l.type, item: l.item, sub: l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate) })) });
+        return { id: U.uuid(), label: `edited ${current}  |  ${inv.counterName}  |  ` + (lines.length ? '₹' + billing.toLocaleString('en-IN') : 'cancelled / no products'),
+          parts: [{ kind: 'invoice_edit', invoice: current, rows }], overlay: { invoice: { no: current, data } } };
+      }, msg);
+      if (!job) return;
+      submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      serial.value = ''; lookup();
+    }
+    serial.addEventListener('input', lookup);
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Find the invoice'), h('div', { class: 'grid2' }, field('Serial Number', serial), field('Invoice Number', invNo)), note), msg, detail);
+    currentView = { onData() { if (!current) lookup(); } };
+  }
+
+  /* ------------------------------------------------------------------ start */
+  function start(notice) {
+    if (!S.token || !S.profile) return registerView(notice);
+    const grace = CFG.OFFLINE_GRACE_DAYS * 864e5;
+    if (!S.snapshot && !navigator.onLine) {
+      root.replaceChildren(h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'No internet'), h('p', {}, 'Connect to the internet once so the app can load the lists.'), h('button', { class: 'btn big', onclick: () => start() }, 'Try again'))));
+      return;
+    }
+    if (S.verifiedAt && Date.now() - S.verifiedAt > grace && !navigator.onLine) {
+      root.replaceChildren(h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Please connect to the internet'), h('p', {}, 'This device has to be verified every ' + CFG.OFFLINE_GRACE_DAYS + ' days.'), h('button', { class: 'btn big', onclick: () => start() }, 'Try again'))));
+      return;
+    }
+    rebuildModel(); home(); sync(true);
+  }
+  window.ProAxis = { start, model, S, sync };
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  start();
 })();

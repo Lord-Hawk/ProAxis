@@ -236,12 +236,14 @@
     const counter = new Combo({ placeholder: 'Counter', values: () => model.countersFor(market.get()), onInput: () => counterChanged(), onChange: () => counterChanged() });
     const cd = new CounterDetails(model, true);
     const remarks = new Combo({ placeholder: 'Remarks (type or pick)', values: () => REMARKS, onInput: () => prio() });
+    remarks.el.classList.add('dark');                                // black box, white text
     const prioEl = h('div', { class: 'hint' });
+    const cooler = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
     const counterCode = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : (clean(counter.get()) && clean(market.get()) ? U.counterCode(clean(market.get()), clean(counter.get())) : ''); };
     let terms, termsField;
     const area = new ProductRows({ model, rateFn: (code, key) => model.rateFor(code, key), codeFn: counterCode, emptyText: 'No product added. Tap “＋ Add Product” to start the order (leave it empty for a visit without an order).', totalLabel: 'Total Order Amount', onChange: () => termsUpdate() });
-    terms = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...TERMS.map(t => h('option', { value: t }, t)));
-    termsField = field('Payment terms', terms);
+    terms = h('select', { class: 'inp dark' }, h('option', { value: '' }, '---- Select ----'), ...TERMS.map(t => h('option', { value: t }, t)));
+    termsField = field('Payment Terms', terms, 'bigl');
     const pay = new PaymentRows();
     const counterChanged = () => { cd.update(market.get(), counter.get()); area.refreshRates(); if (counter.get()) Loc.get(); };
     function termsUpdate() { if (!termsField) return; termsField.hidden = !area.rows.length || area.cancelled; if (termsField.hidden) terms.value = ''; }
@@ -259,7 +261,7 @@
       h('section', { class: 'card' }, h('h3', {}, 'Visit'),
         field("Beat (today's)", h('div', { class: 'beatbox' }, beatEl, h('label', { class: 'tick' }, outTick, ' Out of Beat'))),
         field('Market', market.el), field('Counter', counter.el), cd.el,
-        field('Remarks', remarks.el), prioEl),
+        field('Remarks', remarks.el), prioEl, field('Interest in Cooler', cooler)),
       h('section', { class: 'card' }, h('h3', {}, 'Order – products, quantity and rate'), area.el, termsField),
       h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
       submitBar('SUBMIT VISIT', submit, () => clearForm(true), msg));
@@ -267,7 +269,7 @@
     currentView = { onData() { syncBeat(); area.refreshRates(); counterChanged(); }, tick: syncBeat };     // tick: a new day starts -> its beat
 
     function clearForm() {
-      market.set(''); counter.set(''); remarks.set(''); cd.reset(); area.clear(); terms.value = ''; pay.reset(); counterChanged(); prio(); termsUpdate();
+      market.set(''); counter.set(''); remarks.set(''); cooler.value = ''; cd.reset(); area.clear(); terms.value = ''; pay.reset(); counterChanged(); prio(); termsUpdate();
     }
     function submit() {
       [market, counter, remarks, cd.typeCombo].forEach(c => c.commit()); area.commitAll();
@@ -299,7 +301,7 @@
         const wk = nd ? (model.beatForDate(nd) || U.weekday(nd)) : '';
         lines.forEach(l => orders.push({ dso, 'order no.': '', 'orders taken': lines.length, 'order value': roundRupee(total), 'counter name': name, 'market code': marketCodeOf(mk), 'counter code': code, date: ds, 'payment terms': tm, 'next payment date': nd, weekday: wk, type: l.type, item: l.item, 'sub item': l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate), 'price x qty': plain(U.mul(l.qty, l.rate)) }));
       }
-      const visit = { dso, date: ds, beat, market: mk, 'counter name': name, 'counter code': code, mobile, 'counter type': ctype, 'gstin/pan': gstin, orders: lines.length, productive: lines.length ? 'YES' : 'NO', remarks: rem, 'priority visit date': pdays ? U.addDays(ds, pdays) : '', location: Loc.get() };
+      const visit = { dso, date: ds, beat, market: mk, 'counter name': name, 'counter code': code, mobile, 'counter type': ctype, 'gstin/pan': gstin, orders: lines.length, productive: lines.length ? 'YES' : 'NO', remarks: rem, 'interest in cooler': cooler.value, 'priority visit date': pdays ? U.addDays(ds, pdays) : '', location: Loc.get() };
       const parts = [];
       if (fill && Object.keys(fill).length) parts.push({ kind: 'fill', code, values: fill, replace });
       parts.push({ sheet: 'Visits', rows: [visit] });
