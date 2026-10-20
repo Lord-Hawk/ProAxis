@@ -122,7 +122,7 @@
     }
     return true;
   }
-  let blocked = false;
+  let blocked = false, prefetched = false;
   function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name; }
   async function bootstrapNow() {
     const before = S.profile;
@@ -130,6 +130,9 @@
     S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
     save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
     if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + r.profile.position); home(); }       // new role -> new screens
+    if (!prefetched && (r.profile.position === 'DSO' || r.profile.position === 'Admin')) {      // Today's Beat ready before it is opened
+      prefetched = true; authed('beat_report', { dso: '', beat: '' }, 60000).then(x => repPut('beat||', x)).catch(() => {});
+    }
     else if (currentView && currentView.onData) currentView.onData();
   }
   async function sync(force) {
@@ -282,11 +285,17 @@
     const empty = t => h('p', { class: 'hint' }, t);
     async function load() {
       const c = model.findCounter(market.get(), counter.get()); if (!c) return;
-      const my = ++seq;
-      out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
+      const my = ++seq, key = 'ctr|' + c.code, cached = repGet(key);
+      if (cached) { draw(cached, c); out.prepend(updatingNote()); } else out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
       let r;
       try { r = await authed('counter_report', { code: c.code }, 60000); }
-      catch (e) { if (my === seq) out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – Counter Search needs a connection.' : e.message)); return; }
+      catch (e) {
+        if (my !== seq) return;
+        if (cached) { const n = out.querySelector('.upd'); if (n) n.textContent = e.offline ? 'Offline – showing the last saved figures.' : 'Could not refresh: ' + e.message; }
+        else out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – this screen needs a connection the first time.' : e.message));
+        return;
+      }
+      repPut(key, r);
       if (my !== seq) return;
       draw(r, c);
     }
@@ -359,6 +368,17 @@
     document.body.append(ov);
   }
 
+  /* ------------------------------------------------------------------ last report results: shown at once, then refreshed */
+  const REP = store.get('rep', {}) || {};
+  const repGet = k => (REP[k] ? REP[k].r : null);
+  function repPut(k, r) {
+    REP[k] = { t: Date.now(), r };
+    const keys = Object.keys(REP).sort((a, b) => REP[b].t - REP[a].t);
+    keys.slice(25).forEach(x => delete REP[x]);                          // keep the 25 most recent
+    store.set('rep', REP);
+  }
+  const updatingNote = () => h('p', { class: 'hint upd' }, 'Updating…');
+
   /* ------------------------------------------------------------------ Today's Beat: markets, monthly target, this month's orders, achieved % */
   function beatView() {
     const title = S.profile.position === 'Head of Operations' ? 'Beat Targets' : "Today's Beat";
@@ -372,11 +392,24 @@
     const beatSel = isHead ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...BEATS.map(b => h('option', { value: b }, b))) : null;
     let lastDso = '';
     const monthOf = iso => { const d = U.parseIso(iso); return d ? d.toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
+    let bseq = 0;
     async function load(dso) {
-      out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
+      const my = ++bseq, bt = beatSel ? beatSel.value : '', key = 'beat|' + (dso || '') + '|' + bt;
+      const cached = repGet(key);
+      if (cached) { render(cached, dso); out.append(updatingNote()); } else out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
       let r;
-      try { r = await authed('beat_report', { dso: dso || '', beat: beatSel ? beatSel.value : '' }, 60000); }
-      catch (e) { out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? "No internet – Today's Beat needs a connection." : e.message)); return null; }
+      try { r = await authed('beat_report', { dso: dso || '', beat: bt }, 60000); }
+      catch (e) {
+        if (my !== bseq) return null;
+        if (cached) { const n = out.querySelector('.upd'); if (n) n.textContent = e.offline ? 'Offline – showing the last saved figures.' : 'Could not refresh: ' + e.message; }
+        else out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – this screen needs a connection the first time.' : e.message));
+        return null;
+      }
+      repPut(key, r);
+      if (my !== bseq) return r;
+      return render(r, dso);
+    }
+    function render(r, dso) {
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
       if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
       if (isHead && !beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
