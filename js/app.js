@@ -347,14 +347,14 @@
         parts.push({ sheet: 'Payments Received', rows: [row] });
       }
       const label = name + (orders.length ? '  |  order ₹' + roundRupee(orders[0]['order value']).toLocaleString('en-IN') : '');
-      const sum = ['_*Visit:*_', '', 'Date: ' + dmyShort(ds), 'Beat: ' + (outBeat ? 'Out of Beat' : beat), 'Market: ' + mk, 'Counter: ' + name,
-                   'Remarks: ' + (rem || 'None'), 'Interest in Cooler: ' + cooler.value];
+      const sum = ['_*Visit:*_', 'Date: ' + dmyShort(ds), 'Beat: ' + (outBeat ? 'Out of Beat' : beat), 'Market: ' + mk, 'Counter: ' + name,
+                   'Mobile No.: ' + (mobile || 'None'), 'GSTIN/PAN: ' + (gstin || 'None'), 'Remarks: ' + (rem || 'None'), 'Interest in Cooler: ' + cooler.value];
       if (lines.length) {
-        sum.push('', '_*Orders:*_', '');
+        sum.push('', '_*Orders:*_');
         lines.forEach(l => sum.push(l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), l.qty + ' pc. @ ' + money(l.rate)));
-        sum.push('', '*Total Order Value:* ' + money(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), '', 'Payment Terms: ' + tm);
+        sum.push('*Total Order Value:* ' + money(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), 'Payment Terms: ' + tm);
       }
-      if (pays.length) sum.push('', '_*Payments:*_', '', ...payText(pays));
+      if (pays.length) sum.push('', '_*Payments:*_', ...payText(pays));
       return { id: U.uuid(), label, summary: sum.join('\n'), parts,
         overlay: { visit, orders, newCounter: existing ? null : { market: mk, name, code, mobile, type: ctype, gstin }, newMarket: newMarket ? { beat, market: mk } : null, fill: fill && Object.keys(fill).length ? Object.assign({ code, replace }, fill) : null } };
     }
@@ -389,7 +389,7 @@
           const total = pays.reduce((a, p) => a + p.amount, 0);
           const row = { date: ds, market: mk, 'counter name': c.name, 'counter code': c.code, total: plain(total) };
           pays.forEach(p => { row[p.mode.toLowerCase()] = plain(p.amount); });
-          const summary = ['_*Details:*_', '', 'Date: ' + dmyShort(ds), 'Market: ' + mk, 'Counter: ' + c.name, '', '_*Payments:*_', '', ...payText(pays), '', '*Total:* ' + money(total)].join('\n');
+          const summary = ['_*Details:*_', 'Date: ' + dmyShort(ds), 'Market: ' + mk, 'Counter: ' + c.name, '', '_*Payments:*_', ...payText(pays), '*Total:* ' + money(total)].join('\n');
           return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), summary, parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
         }, msg);
         if (!job) return;
