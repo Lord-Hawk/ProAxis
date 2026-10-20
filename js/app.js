@@ -250,8 +250,8 @@
     const main = shell('Home');
     currentView = { onData() {} };
     if (pos === 'DSO' || pos === 'Admin') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
-    if (pos === 'Head of Operations') main.append(card('BEAT TARGETS', 'View markets of any beat, and targets achieved', 'gold', () => beatView()));
-    else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, and targets achieved", 'gold', () => beatView()));
+    if (pos === 'Head of Operations') main.append(card('BEAT DETAILS', 'View markets of any beat, targets achieved and payments pending', 'gold', () => beatView()));
+    else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, targets achieved and payments pending", 'gold', () => beatView()));
     else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
     main.append(card('COUNTER SEARCH', "View any counter's visits, orders, invoices and more", 'teal', () => counterView()));
     const fl = failedList(); if (fl) main.append(fl);
@@ -497,12 +497,40 @@
     out.rows = beatTargetsOf(ms.rows, out.beat).map(x => ({ market: x.market, target: x.target, orderValue: Math.round((byCode[U.marketCode(x.market).toUpperCase()] || 0) * 100) / 100 }));
     return out;
   }
+  let balCache = null;
+  function counterBalances() {
+    if (balCache && balCache.sig === RD.data.sig) return balCache.acc;
+    const n = v => { const x = Number(v); return isFinite(x) ? x : 0; }, acc = {};
+    const get = (code, name, market) => {
+      const k = norm(code); if (!k) return null;
+      const known = model.counters[sval(code)] || null;
+      return acc[k] || (acc[k] = { code: sval(code), name: (known && known.name) || sval(name), market: ((known && known.market) || sval(market)).toUpperCase(), billed: 0, received: 0 });
+    };
+    let T = RT('Invoice Record'); const inv = {};
+    T.rows.forEach(r => {
+      const no = sval(T.get(r, 'invoice no.')), code = T.get(r, 'counter code'); if (!no || !norm(code)) return;
+      const i = inv[no] || (inv[no] = { code, name: T.get(r, 'counter name'), market: T.get(r, 'market'), lines: 0, billing: 0, sum: 0 });
+      const q = n(T.get(r, 'qty')), pr = n(T.get(r, 'price'));
+      if (sval(T.get(r, 'sub item', 'sub-item')) && q) { i.lines++; const v = T.get(r, 'price x qty (for sum ref)', 'price x qty'); i.sum += v === '' ? q * pr : n(v); }
+      if (n(T.get(r, 'billing value'))) i.billing = n(T.get(r, 'billing value'));
+    });
+    Object.values(inv).forEach(i => { const c = get(i.code, i.name, i.market); if (c && i.lines) c.billed += i.billing || Math.round(i.sum); });
+    T = RT('Payments Received');
+    T.rows.forEach(r => {
+      const c = get(T.get(r, 'counter code'), T.get(r, 'counter name'), T.get(r, 'market')); if (!c) return;
+      const t = ['cash', 'upi', 'cheque', 'card'].reduce((a, m) => a + n(T.get(r, m)), 0) || n(T.get(r, 'total'));
+      c.received += t;
+    });
+    Object.values(acc).forEach(c => { c.billed = Math.round(c.billed * 100) / 100; c.received = Math.round(c.received * 100) / 100; });
+    balCache = { sig: RD.data.sig, acc };
+    return acc;
+  }
   const waitNote = () => h('p', { class: 'hint' }, 'Getting the data for the first time…');
   const noData = e => h('div', { class: 'msg bad' }, e && e.offline ? 'No internet – this screen needs a connection the first time.' : 'Could not get the data: ' + (e && e.message || ''));
 
   /* ------------------------------------------------------------------ Today's Beat: markets, monthly target, this month's orders, achieved % */
   function beatView() {
-    const title = S.profile.position === 'Head of Operations' ? 'Beat Targets' : "Today's Beat";
+    const title = S.profile.position === 'Head of Operations' ? 'Beat Details' : "Today's Beat";
     const main = shell(title, home);
     const pos = S.profile.position, picks = pos !== 'DSO';
     const out = h('div');
@@ -511,6 +539,7 @@
     const isHead = pos === 'Head of Operations';                     // the Head also chooses the beat: Mon_1 ... Sat_4 in date order
     const BEATS = []; [1, 2, 3, 4].forEach(w => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => BEATS.push(d + '_' + w)));
     const beatSel = isHead ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...BEATS.map(b => h('option', { value: b }, b))) : null;
+    const detSel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'targets' }, 'Beat Targets'), h('option', { value: 'pending' }, 'Payments Pending'));
     let lastDso = '';
     const monthOf = iso => { const d = U.parseIso(iso); return d ? d.toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
     async function load(dso) {
@@ -526,8 +555,10 @@
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
       if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
       if (isHead && !beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
+      if (!detSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select what to see under Details.')); return r; }
       const item = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
       const who = r.dso || dso || S.profile.name;
+      if (detSel.value === 'pending') return renderPending(r, who, item);
       const info = isHead
         ? h('div', { class: 'beatinfo' }, item('DSO', who), item('Month', monthOf(r.date)), item('Beat', r.beat || '–'))
         : h('div', { class: 'beatinfo' }, item('Date', dmyShort(r.date)), item('Beat', r.beat || '–'), item('Month', monthOf(r.date)), item('DSO', who));
@@ -549,9 +580,26 @@
         h('tbody', {}, ...body))));
       return r;
     }
+    /* Payments Pending: the counters of the beat's markets whose bills (all time) are not fully paid */
+    function renderPending(r, who, item) {
+      const info = isHead ? h('div', { class: 'beatinfo' }, item('DSO', who), item('Beat', r.beat || '–'))
+                          : h('div', { class: 'beatinfo' }, item('Date', dmyShort(r.date)), item('Beat', r.beat || '–'), item('DSO', who));
+      if (r.error) { out.replaceChildren(info, h('div', { class: 'msg bad' }, r.error)); return r; }
+      const acc = counterBalances(), byMarket = {};
+      Object.values(acc).forEach(c => { if (c.billed - c.received > 0.005) (byMarket[c.market] = byMarket[c.market] || []).push(c); });
+      const list = [];
+      (r.rows || []).forEach(x => (byMarket[x.market] || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(c => list.push(c)));
+      if (!list.length) { out.replaceChildren(info, h('p', { class: 'hint' }, 'No counter in this beat has a payment pending.')); return r; }
+      out.replaceChildren(info, h('div', { class: 'tablewrap' }, h('table', { class: 'beat' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Market'), h('th', {}, 'Counter'), h('th', { class: 'c' }, 'Bill Value'), h('th', { class: 'c' }, 'Payment Received'), h('th', { class: 'c' }, 'Payment Pending'))),
+        h('tbody', {}, ...list.map(c => h('tr', {}, h('td', {}, c.market), h('td', { class: 'wrap' }, c.name), h('td', { class: 'c' }, inr0(c.billed)), h('td', { class: 'c' }, inr0(c.received)),
+          h('td', { class: 'c p-red' }, inr0(c.billed - c.received))))))));
+      return r;
+    }
     if (sel) sel.addEventListener('change', () => { lastDso = sel.value; load(lastDso); });
     if (beatSel) beatSel.addEventListener('change', () => { if (lastDso) load(lastDso); });
-    main.append(h('section', { class: 'card' }, h('h3', {}, title), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, out));
+    detSel.addEventListener('change', () => load(lastDso));
+    main.append(h('section', { class: 'card' }, h('h3', {}, title), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, field('Details', detSel), out));
     load('');
     currentView = { onData() {} };
   }
