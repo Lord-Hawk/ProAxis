@@ -158,7 +158,7 @@
           st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
       } }, 'Send OTP');
-      box.replaceChildren(h('h2', {}, 'Register this phone'), field('Position', sel), inp('Your name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
+      box.replaceChildren(h('h2', {}, 'Register this device'), field('Position', sel), inp('Your name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
         inp('Email ID', 'email', { type: 'email', inputmode: 'email', autocapitalize: 'off' }), headBox, go, err);
     }
     function step2() {
@@ -252,7 +252,7 @@
       [market, counter, remarks, cd.typeCombo].forEach(c => c.commit()); area.commitAll();
       const job = tryRun(build, msg); if (!job) return;
       submitJob(job);
-      say(msg, '✔ Saved on this phone' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
       clearForm(); window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     function build() {
@@ -327,7 +327,7 @@
           return { id: U.uuid(), label: c.name + '  |  payment ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Payments Received', rows: [row] }], overlay: null };
         }, msg);
         if (!job) return;
-        submitJob(job); say(msg, '✔ Saved on this phone' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clearForm();
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clearForm();
       }, clearForm, msg));
     currentView = { onData: upd };
   }
@@ -350,7 +350,7 @@
           return { id: U.uuid(), label: 'inward invoice ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Inwards', rows }], overlay: { inwards: rows } };
         }, msg);
         if (!job) return;
-        submitJob(job); say(msg, '✔ Saved on this phone' + (online ? ' – uploading…' : ' – will upload when you are online')); clear();
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online')); clear();
       }, clear, msg));
     currentView = { onData() { area.refreshRates(); } };
   }
@@ -401,7 +401,7 @@
           return { id: U.uuid(), label: `${ino}  |  ${c.name}  |  ₹${billing.toLocaleString('en-IN')}`, parts, overlay: { invoice: { no: ino, data }, fill: hasFill ? Object.assign({ code: c.code, replace }, fill) : null } };
         }, msg);
         if (!job) return;
-        submitJob(job); say(msg, '✔ Saved on this phone' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clear();
+        submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')'); clear();
       }, clear, msg));
     invChanged();
     currentView = { onData() { counterChanged(); } };
@@ -457,7 +457,7 @@
           parts: [{ kind: 'invoice_edit', invoice: current, rows }], overlay: { invoice: { no: current, data } } };
       }, msg);
       if (!job) return;
-      submitJob(job); say(msg, '✔ Saved on this phone' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
       serial.value = ''; lookup();
     }
     serial.addEventListener('input', lookup);
