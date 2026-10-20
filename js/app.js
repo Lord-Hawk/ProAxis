@@ -21,7 +21,40 @@
     outbox: store.get('outbox', []), failed: store.get('failed', []),
   };
   const save = k => store.set(k, S[k]);
-  const deviceType = () => { const u = navigator.userAgent; if (/iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1)) return 'Tablet'; if (/Android/.test(u)) return /Mobile/.test(u) ? 'Mobile Phone' : 'Tablet'; if (/iPhone|iPod/.test(u)) return 'Mobile Phone'; return 'Mobile Phone'; };
+  /* Device Type for the Users sheet: Mobile Phone / Tablet / Laptop / PC.
+     Phones and tablets are told apart from the browser's description. For a computer the battery decides: a laptop has one,
+     a desktop PC reports "always plugged in and full" (or no battery at all). */
+  function osName() {
+    const u = navigator.userAgent, p = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+    if (/Android/i.test(u) || /Android/i.test(p)) return 'Android';
+    if (/iPhone|iPad|iPod/.test(u) || (/Macintosh/.test(u) && (navigator.maxTouchPoints || 0) > 1)) return 'iOS';
+    if (/CrOS/.test(u) || /Chrome OS/i.test(p)) return 'Chrome OS';
+    if (/Windows/i.test(u) || /Windows/i.test(p)) return 'Windows';
+    if (/Macintosh|Mac OS X/.test(u) || /macOS/i.test(p)) return 'macOS';
+    if (/Linux|X11/i.test(u) || /Linux/i.test(p)) return 'Linux';
+    return 'Unknown OS';
+  }
+  async function deviceType() { return (await deviceKind()) + ' (' + osName() + ')'; }     // e.g. "Laptop (Windows)"
+  async function deviceKind() {
+    const u = navigator.userAgent, uad = navigator.userAgentData;
+    const touch = navigator.maxTouchPoints || 0;
+    if (/iPhone|iPod/.test(u) || (uad && uad.mobile)) return 'Mobile Phone';
+    if (/iPad/.test(u) || (/Macintosh/.test(u) && touch > 1)) return 'Tablet';
+    if (/Android/.test(u)) return /Mobile/.test(u) ? 'Mobile Phone' : 'Tablet';
+    if (/Windows Phone|BlackBerry|Opera Mini|IEMobile/.test(u)) return 'Mobile Phone';
+    if (/Tablet|Silk|Kindle|PlayBook/.test(u)) return 'Tablet';
+    if (/CrOS/.test(u)) return 'Laptop';                                   // Chromebooks are laptops
+    // a computer (Windows / Mac / Linux)
+    if (navigator.getBattery) {
+      try {
+        const b = await Promise.race([navigator.getBattery(), new Promise((_, rej) => setTimeout(() => rej(new Error('t')), 1500))]);
+        const desktopLike = b.charging && b.level === 1 && b.chargingTime === 0 && b.dischargingTime === Infinity;
+        if (!desktopLike) return 'Laptop';                                 // running on battery, or charging: a laptop
+        return /Macintosh/.test(u) ? 'Laptop' : 'PC';                      // full & plugged in looks like a desktop
+      } catch (e) {}
+    }
+    return /Macintosh/.test(u) ? 'Laptop' : 'PC';                          // no battery information (Safari / Firefox)
+  }
   /* Location: the device's GPS ("lat, lon") when the user allows it, else an approximate position from the IP address */
   const Loc = {
     value: '', updated: 0, busy: false,
@@ -176,7 +209,7 @@
         if (!v.position) { say(err, 'Select the Position first.', true); return; }
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_request', Object.assign({ deviceType: deviceType(), location: Loc.get() }, v));
+          const r = await api('register_request', Object.assign({ deviceType: await deviceType(), location: Loc.get() }, v));
           st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
       } }, 'Send OTP');
@@ -188,7 +221,7 @@
       const go = h('button', { class: 'btn big', onclick: async () => {
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: deviceType(), location: Loc.get() }, v));
+          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: await deviceType(), location: Loc.get() }, v));
           store.set('token', r.token); mem.token = r.token; S.profile = r.profile; save('profile');
           box.replaceChildren(h('h2', {}, 'This device has been registered'), h('button', { class: 'btn big', onclick: () => start() }, 'Next'));
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
