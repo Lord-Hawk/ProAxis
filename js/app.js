@@ -213,7 +213,7 @@
     const pos = S.profile.position;
     const main = shell('Home');
     currentView = { onData() {} };
-    if (pos === 'DSO') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
+    if (pos === 'DSO' || pos === 'Admin') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
     else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
     else main.append(h('p', { class: 'hint center' }, 'Nothing to show here yet.'));
     const fl = failedList(); if (fl) main.append(fl);
