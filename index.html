@@ -15,6 +15,25 @@
 </head>
 <body>
 <div id="app"><p class="boot">Loading ProAxis…</p></div>
+<script>
+/* shows any error on screen (a file that did not load, or a bug) instead of a blank page */
+(function () {
+  function show(msg) {
+    var b = document.getElementById('pa-err');
+    if (!b) { b = document.createElement('div'); b.id = 'pa-err';
+      b.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:999;background:#b91c1c;color:#fff;padding:10px 12px;border-radius:10px;font:14px/1.4 system-ui,sans-serif;white-space:pre-wrap;word-break:break-word';
+      document.body.appendChild(b); }
+    b.textContent = (b.textContent ? b.textContent + '\n' : 'Something went wrong – please send this message:\n') + msg;
+  }
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (t && t !== window && (t.src || t.href)) show('Could not load ' + (t.src || t.href));
+    else show((e.message || 'Error') + (e.filename ? '  (' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno + ')' : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) { show(String(e.reason && e.reason.message || e.reason)); });
+  window.__paShow = show;
+})();
+</script>
 <script src="js/config.js"></script>
 <script src="js/util.js"></script>
 <script src="js/model.js"></script>

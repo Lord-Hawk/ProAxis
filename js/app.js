@@ -490,6 +490,7 @@
 
   /* ------------------------------------------------------------------ start */
   function start(notice) {
+    if (typeof Combo === 'undefined' || typeof ProductRows === 'undefined') { if (window.__paShow) window.__paShow('js/ui.js did not load. Upload it into the js folder of the site.'); }
     if (!S.token || !S.profile) return registerView(notice);
     const grace = CFG.OFFLINE_GRACE_DAYS * 864e5;
     if (!S.snapshot && !navigator.onLine) {
