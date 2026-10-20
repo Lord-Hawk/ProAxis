@@ -138,19 +138,20 @@
   function registerView(notice) {
     currentView = null;
     const st = { step: 1, requestId: null, sentTo: '' };
-    const v = { position: 'DSO', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
+    const v = { position: '', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
     const box = h('div', { class: 'card' });
     root.replaceChildren(h('header', { class: 'top' }, h('span', { class: 'logo' }, 'ProAxis')), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
     const err = msgBox();
     const inp = (label, key, attrs) => { const i = h('input', Object.assign({ class: 'inp', value: v[key], autocomplete: 'off' }, attrs || {})); i.addEventListener('input', () => { v[key] = i.value; }); return field(label, i); };
     function step1() {
-      const sel = h('select', { class: 'inp' }, ...POSITIONS.map(p => h('option', { value: p }, p)));
+      const sel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...POSITIONS.map(p => h('option', { value: p }, p)));
       sel.value = v.position;
       const headBox = h('div');
-      const draw = () => { headBox.replaceChildren(...(v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
+      const draw = () => { headBox.replaceChildren(...(!v.position ? [] : v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
       sel.addEventListener('change', () => { v.position = sel.value; draw(); });
       draw();
       const go = h('button', { class: 'btn big', onclick: async () => {
+        if (!v.position) { say(err, 'Select the Position first.', true); return; }
         go.disabled = true; say(err, '');
         try {
           const r = await api('register_request', Object.assign({ deviceType: deviceType() }, v));
@@ -218,7 +219,7 @@
     const counterCode = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : (clean(counter.get()) && clean(market.get()) ? U.counterCode(clean(market.get()), clean(counter.get())) : ''); };
     let terms, termsField;
     const area = new ProductRows({ model, rateFn: (code, key) => model.rateFor(code, key), codeFn: counterCode, emptyText: 'No product added. Tap “＋ Add Product” to start the order (leave it empty for a visit without an order).', totalLabel: 'Total Order Amount', onChange: () => termsUpdate() });
-    terms = h('select', { class: 'inp' }, h('option', { value: '' }, 'Payment terms'), ...TERMS.map(t => h('option', { value: t }, t)));
+    terms = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...TERMS.map(t => h('option', { value: t }, t)));
     termsField = field('Payment terms', terms);
     const pay = new PaymentRows();
     const counterChanged = () => { cd.update(market.get(), counter.get()); area.refreshRates(); };

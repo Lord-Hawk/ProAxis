@@ -9,7 +9,7 @@
     constructor(o) {
       this.values = o.values || (() => []); this.strict = !!o.strict;
       this.onInput = o.onInput; this.onPick = o.onPick; this.onChange = o.onChange;
-      this.input = h('input', { type: 'text', class: 'inp', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: o.placeholder || '' });
+      this.input = h('input', { type: 'text', class: 'inp', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '---- Select ----' });
       this.list = h('div', { class: 'combo-list', hidden: true });
       this.btn = h('button', { type: 'button', class: 'combo-arrow', tabindex: '-1', 'aria-label': 'Show the list' }, '▾');
       this.el = h('div', { class: 'combo' }, this.input, this.btn, this.list);
@@ -215,7 +215,7 @@
       const r = { amt, mode };
       const fill = () => {
         const used = new Set(); for (const x of this.rows) { if (x === r) break; if (x.mode.value) used.add(x.mode.value); }
-        const keep = mode.value; mode.replaceChildren(h('option', { value: '' }, 'Payment mode'), ...PAYMENT_MODES.filter(m => !used.has(m) || m === keep).map(m => h('option', { value: m }, m)));
+        const keep = mode.value; mode.replaceChildren(h('option', { value: '' }, '---- Select ----'), ...PAYMENT_MODES.filter(m => !used.has(m) || m === keep).map(m => h('option', { value: m }, m)));
         mode.value = keep;
       };
       r.fill = fill;
