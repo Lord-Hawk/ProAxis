@@ -176,3 +176,4 @@ table.beat th.c,table.beat td.c{text-align:center}
 .pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;white-space:nowrap}
 .pill.green{background:#dcfce7;color:#166534}.pill.blue{background:#dbeafe;color:#1e40af}.pill.yellow{background:#fef3c7;color:#92400e}
 .pill.red{background:#fee2e2;color:#b91c1c}.pill.grey{background:#e2e8f0;color:#475569}
+table.beat td.wrap{white-space:normal;min-width:80px}
