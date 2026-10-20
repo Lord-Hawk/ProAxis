@@ -214,7 +214,8 @@
     const main = shell('Home');
     currentView = { onData() {} };
     if (pos === 'DSO' || pos === 'Admin') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
-    if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, and targets achieved", 'gold', () => beatView()));
+    if (pos === 'Head of Operations') main.append(card('BEAT TARGETS', 'View markets of any beat, and targets achieved', 'gold', () => beatView()));
+    else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, and targets achieved", 'gold', () => beatView()));
     else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
     const fl = failedList(); if (fl) main.append(fl);
   }
@@ -257,7 +258,8 @@
 
   /* ------------------------------------------------------------------ Today's Beat: markets, monthly target, this month's orders, achieved % */
   function beatView() {
-    const main = shell("Today's Beat", home);
+    const title = S.profile.position === 'Head of Operations' ? 'Beat Targets' : "Today's Beat";
+    const main = shell(title, home);
     const pos = S.profile.position, picks = pos !== 'DSO';
     const out = h('div');
     const inr0 = x => '₹' + Math.round(x).toLocaleString('en-IN');
@@ -275,9 +277,11 @@
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
       if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
       if (isHead && !beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
-      const info = h('div', { class: 'beatinfo' },
-        h('div', {}, h('span', {}, 'Date'), h('b', {}, dmyShort(r.date))), h('div', {}, h('span', {}, 'Beat'), h('b', {}, r.beat || '–')),
-        h('div', {}, h('span', {}, 'Month'), h('b', {}, monthOf(r.date))), h('div', {}, h('span', {}, 'DSO'), h('b', {}, r.dso || dso || S.profile.name)));
+      const item = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
+      const who = r.dso || dso || S.profile.name;
+      const info = isHead
+        ? h('div', { class: 'beatinfo' }, item('DSO', who), item('Month', monthOf(r.date)), item('Beat', r.beat || '–'))
+        : h('div', { class: 'beatinfo' }, item('Date', dmyShort(r.date)), item('Beat', r.beat || '–'), item('Month', monthOf(r.date)), item('DSO', who));
       if (r.error) { out.replaceChildren(info, h('div', { class: 'msg bad' }, r.error)); return r; }
       const rows = r.rows || [];
       if (!rows.length) { out.replaceChildren(info, h('p', { class: 'hint' }, 'No markets are listed for this beat in the markets sheet.')); return r; }
@@ -299,7 +303,7 @@
     }
     if (sel) sel.addEventListener('change', () => { lastDso = sel.value; load(lastDso); });
     if (beatSel) beatSel.addEventListener('change', () => { if (lastDso) load(lastDso); });
-    main.append(h('section', { class: 'card' }, h('h3', {}, "Today's Beat"), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, out));
+    main.append(h('section', { class: 'card' }, h('h3', {}, title), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, out));
     load('');
     currentView = { onData() {} };
   }
