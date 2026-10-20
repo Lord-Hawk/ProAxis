@@ -22,6 +22,25 @@
   };
   const save = k => store.set(k, S[k]);
   const deviceType = () => { const u = navigator.userAgent; if (/iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1)) return 'Tablet'; if (/Android/.test(u)) return /Mobile/.test(u) ? 'Mobile Phone' : 'Tablet'; if (/iPhone|iPod/.test(u)) return 'Mobile Phone'; return 'Mobile Phone'; };
+  /* Location: the device's GPS ("lat, lon") when the user allows it, else an approximate position from the IP address */
+  const Loc = {
+    value: '', updated: 0, busy: false,
+    refresh() {
+      if (this.busy) return; this.busy = true;
+      const done = v => { if (v) this.value = v; this.updated = Date.now(); this.busy = false; };
+      const ip = async () => {
+        for (const [url, get] of [['https://ipwho.is/', j => (j.success === false ? null : [j.latitude, j.longitude])], ['https://ipapi.co/json/', j => [j.latitude, j.longitude]]]) {
+          try { const c = new AbortController(); setTimeout(() => c.abort(), 6000); const p = get(await (await fetch(url, { signal: c.signal })).json()); if (p && isFinite(p[0]) && isFinite(p[1])) return Number(p[0]).toFixed(6) + ', ' + Number(p[1]).toFixed(6) + ' (IP approx)'; } catch (e) {}
+        }
+        return '';
+      };
+      if (navigator.geolocation) navigator.geolocation.getCurrentPosition(
+        pos => done(pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6)),
+        () => ip().then(done), { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 });
+      else ip().then(done);
+    },
+    get() { if (Date.now() - this.updated > 120000) this.refresh(); return this.value; },
+  };
   const deviceId = () => { let d = store.get('device', null); if (!d) { d = U.uuid(); store.set('device', d); } return d; };
 
   /* ------------------------------------------------------------------ API */
@@ -116,7 +135,7 @@
   window.addEventListener('online', () => { online = true; sync(true); });
   window.addEventListener('offline', () => { online = false; setStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(true); });
-  setInterval(() => { if (!document.hidden) sync(false); }, 20000);
+  setInterval(() => { if (!document.hidden) { sync(false); if (currentView && currentView.tick) currentView.tick(); } }, 20000);
 
   /* ------------------------------------------------------------------ shell (top bar + view) */
   function shell(title, onBack) {
@@ -144,6 +163,7 @@
     const err = msgBox();
     const inp = (label, key, attrs) => { const i = h('input', Object.assign({ class: 'inp', value: v[key], autocomplete: 'off' }, attrs || {})); i.addEventListener('input', () => { v[key] = i.value; }); return field(label, i); };
     function step1() {
+      Loc.refresh();
       const sel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...POSITIONS.map(p => h('option', { value: p }, p)));
       sel.value = v.position;
       const headBox = h('div');
@@ -154,7 +174,7 @@
         if (!v.position) { say(err, 'Select the Position first.', true); return; }
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_request', Object.assign({ deviceType: deviceType() }, v));
+          const r = await api('register_request', Object.assign({ deviceType: deviceType(), location: Loc.get() }, v));
           st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
       } }, 'Send OTP');
@@ -166,7 +186,7 @@
       const go = h('button', { class: 'btn big', onclick: async () => {
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: deviceType() }, v));
+          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: deviceType(), location: Loc.get() }, v));
           store.set('token', r.token); mem.token = r.token; S.profile = r.profile; save('profile');
           box.replaceChildren(h('h2', {}, 'This device has been registered'), h('button', { class: 'btn big', onclick: () => start() }, 'Next'));
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
@@ -206,9 +226,10 @@
   /* ------------------------------------------------------------------ DSO: visit */
   function visitView() {
     const main = shell('Log Visits', home);
+    Loc.refresh();
     const msg = msgBox(), dso = S.profile.dso || S.profile.name;
     let outBeat = false, calBeat = '';
-    const date = dateBox(U.todayIso(), () => syncBeat());
+    const date = { get: () => U.todayIso() };                       // no Date box for a DSO: the date is always today's
     const beatEl = h('input', { class: 'inp', readonly: true, placeholder: 'Beat' });
     const outTick = h('input', { type: 'checkbox' });
     const market = new Combo({ placeholder: 'Market', values: () => (outBeat ? model.sheetMarkets() : model.marketsFor(beatEl.value || calBeat)), onInput: () => counterChanged(), onChange: () => { counter.set(''); counterChanged(); } });
@@ -222,7 +243,7 @@
     terms = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...TERMS.map(t => h('option', { value: t }, t)));
     termsField = field('Payment terms', terms);
     const pay = new PaymentRows();
-    const counterChanged = () => { cd.update(market.get(), counter.get()); area.refreshRates(); };
+    const counterChanged = () => { cd.update(market.get(), counter.get()); area.refreshRates(); if (counter.get()) Loc.get(); };
     function termsUpdate() { if (!termsField) return; termsField.hidden = !area.rows.length || area.cancelled; if (termsField.hidden) terms.value = ''; }
     function syncBeat() {
       const d = date.get(), b = U.parseIso(d) ? model.beatForDate(d) : '';
@@ -236,14 +257,14 @@
     outTick.addEventListener('change', () => { outBeat = outTick.checked; beatEl.value = outBeat ? '' : calBeat; market.set(''); counter.set(''); counterChanged(); });
     main.append(
       h('section', { class: 'card' }, h('h3', {}, 'Visit'),
-        h('div', { class: 'grid2' }, field('Date', date), field('Beat (from date)', h('div', { class: 'beatbox' }, beatEl, h('label', { class: 'tick' }, outTick, ' Out of Beat')))),
+        field("Beat (today's)", h('div', { class: 'beatbox' }, beatEl, h('label', { class: 'tick' }, outTick, ' Out of Beat'))),
         field('Market', market.el), field('Counter', counter.el), cd.el,
         field('Remarks', remarks.el), prioEl),
       h('section', { class: 'card' }, h('h3', {}, 'Order – products, quantity and rate'), area.el, termsField),
       h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
       submitBar('SUBMIT VISIT', submit, () => clearForm(true), msg));
     termsUpdate(); syncBeat();
-    currentView = { onData() { syncBeat(); area.refreshRates(); counterChanged(); } };
+    currentView = { onData() { syncBeat(); area.refreshRates(); counterChanged(); }, tick: syncBeat };     // tick: a new day starts -> its beat
 
     function clearForm() {
       market.set(''); counter.set(''); remarks.set(''); cd.reset(); area.clear(); terms.value = ''; pay.reset(); counterChanged(); prio(); termsUpdate();
@@ -278,7 +299,7 @@
         const wk = nd ? (model.beatForDate(nd) || U.weekday(nd)) : '';
         lines.forEach(l => orders.push({ dso, 'order no.': '', 'orders taken': lines.length, 'order value': roundRupee(total), 'counter name': name, 'market code': marketCodeOf(mk), 'counter code': code, date: ds, 'payment terms': tm, 'next payment date': nd, weekday: wk, type: l.type, item: l.item, 'sub item': l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate), 'price x qty': plain(U.mul(l.qty, l.rate)) }));
       }
-      const visit = { dso, date: ds, beat, market: mk, 'counter name': name, 'counter code': code, mobile, 'counter type': ctype, 'gstin/pan': gstin, orders: lines.length, productive: lines.length ? 'YES' : 'NO', remarks: rem, 'priority visit date': pdays ? U.addDays(ds, pdays) : '' };
+      const visit = { dso, date: ds, beat, market: mk, 'counter name': name, 'counter code': code, mobile, 'counter type': ctype, 'gstin/pan': gstin, orders: lines.length, productive: lines.length ? 'YES' : 'NO', remarks: rem, 'priority visit date': pdays ? U.addDays(ds, pdays) : '', location: Loc.get() };
       const parts = [];
       if (fill && Object.keys(fill).length) parts.push({ kind: 'fill', code, values: fill, replace });
       parts.push({ sheet: 'Visits', rows: [visit] });
@@ -299,7 +320,7 @@
   function payView() {
     const main = shell('Log Payments', home);
     const msg = msgBox(), dso = S.profile.dso || S.profile.name;
-    const date = dateBox(U.todayIso());
+    const date = { get: () => U.todayIso() };                       // no Date box for a DSO: the date is always today's
     const info = h('div', { class: 'hint' });
     const market = new Combo({ placeholder: 'Market', strict: true, values: () => model.allMarkets(), onChange: () => { counter.set(''); upd(); } });
     const counter = new Combo({ placeholder: 'Counter', strict: true, values: () => model.countersFor(market.get()), onChange: upd });
@@ -309,7 +330,7 @@
       info.textContent = c ? `Code ${c.code}   |   Mobile No.: ${c.mobile || 'not on file'}   |   Counter type: ${c.type || 'not on file'}` : '';
     }
     function clearForm() { market.set(''); counter.set(''); pay.reset(); upd(); }
-    main.append(h('section', { class: 'card' }, h('h3', {}, 'Date and counter'), field('Date', date), field('Market', market.el), field('Counter', counter.el), info),
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Counter'), field('Market', market.el), field('Counter', counter.el), info),
       h('section', { class: 'card' }, h('h3', {}, 'Payment received'), pay.el),
       submitBar('SUBMIT PAYMENT', () => {
         [market, counter].forEach(c => c.commit());
