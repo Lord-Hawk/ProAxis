@@ -240,7 +240,7 @@
     const remarks = new Combo({ placeholder: 'Remarks (type or pick)', values: () => REMARKS, onInput: () => prio() });
     remarks.el.classList.add('dark');                                // black box, white text
     const prioEl = h('div', { class: 'hint' });
-    const cooler = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
+    const cooler = h('select', { class: 'inp dark' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'Yes' }, 'Yes'), h('option', { value: 'No' }, 'No'));
     const counterCode = () => { const c = model.findCounter(market.get(), counter.get()); return c ? c.code : (clean(counter.get()) && clean(market.get()) ? U.counterCode(clean(market.get()), clean(counter.get())) : ''); };
     let terms, termsField;
     const area = new ProductRows({ model, rateFn: (code, key) => model.rateFor(code, key), codeFn: counterCode, emptyText: 'No product added. Tap “＋ Add Product” to start the order (leave it empty for a visit without an order).', totalLabel: 'Total Order Amount', onChange: () => termsUpdate() });
