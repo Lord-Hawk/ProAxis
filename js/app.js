@@ -21,7 +21,7 @@
     outbox: store.get('outbox', []), failed: store.get('failed', []),
   };
   const save = k => store.set(k, S[k]);
-  const deviceName = () => { const u = navigator.userAgent; const m = /Android[^;]*;\s*([^;)]+)/.exec(u); if (/iPhone/.test(u)) return 'iPhone (web app)'; if (/iPad/.test(u)) return 'iPad (web app)'; if (m) return 'Android ' + m[1].trim().slice(0, 30) + ' (web app)'; return (/Windows/.test(u) ? 'Windows' : /Mac/.test(u) ? 'Mac' : 'Browser') + ' (web app)'; };
+  const deviceType = () => { const u = navigator.userAgent; if (/iPad/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1)) return 'Tablet'; if (/Android/.test(u)) return /Mobile/.test(u) ? 'Mobile Phone' : 'Tablet'; if (/iPhone|iPod/.test(u)) return 'Mobile Phone'; return 'Mobile Phone'; };
   const deviceId = () => { let d = store.get('device', null); if (!d) { d = U.uuid(); store.set('device', d); } return d; };
 
   /* ------------------------------------------------------------------ API */
@@ -70,22 +70,42 @@
     }
     return true;
   }
+  let blocked = false;
+  function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name; }
+  async function bootstrapNow() {
+    const before = S.profile;
+    const r = await authed('bootstrap', {});
+    S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
+    save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
+    if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + r.profile.position); home(); }       // new role -> new screens
+    else if (currentView && currentView.onData) currentView.onData();
+  }
   async function sync(force) {
     if (syncing || !S.token) return;
     syncing = true; setStatus();
     try {
+      if (blocked) { await authed('whoami', {}); blocked = false; start(); return; }     // throws while still blocked
       const ok = await flush();
-      if (ok && (force || Date.now() - lastRefresh > CFG.REFRESH_SECS * 1000 - 2000 || pending() === 0 && !S.snapshot)) {
-        const r = await authed('bootstrap', {});
-        S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
-        save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
-        if (currentView && currentView.onData) currentView.onData();
+      if (ok) {
+        if (force || Date.now() - lastRefresh > CFG.REFRESH_SECS * 1000 - 2000 || !S.snapshot) await bootstrapNow();
+        else {                                                            // quick check: blocked / removed / role changed by the owner?
+          const r = await authed('whoami', {});
+          if (profileChanged(S.profile, r.profile)) await bootstrapNow();
+        }
       }
       online = true;
     } catch (e) {
-      if (e.code === 'removed' || e.code === 'blocked') { deregister(e.code === 'removed' ? 'Your registration was removed by the owner. Register again to continue.' : 'This device was blocked.'); return; }
+      if (e.code === 'removed') { deregister('Your registration was removed by the owner. Register again to continue.'); return; }
+      if (e.code === 'blocked') { blocked = true; blockedView(); return; }
       if (e.offline) online = false;
     } finally { syncing = false; setStatus(); }
+  }
+  function blockedView() {
+    currentView = null; statusEl = null;
+    root.replaceChildren(h('header', { class: 'top' }, h('span', { class: 'logo' }, 'ProAxis')),
+      h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Access stopped'),
+        h('p', {}, 'The owner has blocked this device, so ProAxis cannot be used on it. The app starts working again by itself if the owner sets the Status back to Active.'),
+        h('button', { class: 'btn big', onclick: () => sync(true) }, 'Check again'))));
   }
   function deregister(msg) {
     ['token', 'profile', 'snapshot', 'verifiedAt', 'outbox', 'failed'].forEach(k => store.del(k));
@@ -133,7 +153,7 @@
       const go = h('button', { class: 'btn big', onclick: async () => {
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_request', Object.assign({ computer: deviceName() }, v));
+          const r = await api('register_request', Object.assign({ deviceType: deviceType() }, v));
           st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
       } }, 'Send OTP');
@@ -145,7 +165,7 @@
       const go = h('button', { class: 'btn big', onclick: async () => {
         go.disabled = true; say(err, '');
         try {
-          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), computer: deviceName() }, v));
+          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: deviceType() }, v));
           store.set('token', r.token); mem.token = r.token; S.profile = r.profile; save('profile');
           box.replaceChildren(h('h2', {}, 'This device has been registered'), h('button', { class: 'btn big', onclick: () => start() }, 'Next'));
         } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
