@@ -279,7 +279,7 @@
     const again = () => { if (!document.body.contains(out)) return RD.subs.delete(again); if (shownCounter && counter.get()) draw(counterReport(shownCounter.code), shownCounter); };
     RD.subs.add(again);                                                     // newer data arrived: redraw what is on screen
     const pill = (txt, kind) => h('span', { class: 'pill ' + kind }, txt);
-    const prodLine = l => l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : '') + ' × ' + l.qty + ' @ ' + rs(l.price);
+    const prodLine = l => prodName(l) + ' × ' + l.qty + ' @ ' + rs(l.price);
     const box = (title, ...rows) => h('div', { class: 'cs-box' }, h('h4', {}, title), ...rows);
     const row = (left, right) => h('div', { class: 'cs-row' }, h('div', { class: 'cs-l' }, ...left), h('div', { class: 'cs-r' }, ...right));
     const sub = t => h('div', { class: 'cs-sub' }, t);
@@ -391,12 +391,14 @@
     return { rows: (d.t || {})[name] || [], get: (r, ...keys) => { for (const k of keys) { const v = r[idx[k]]; if (v !== '' && v != null) return v; } return ''; } };
   }
   const TERM_DAYS_R = { 'cod': 0, '15 days': 14, '30 days': 28, '45 days': 42 };
+  /* a product as one name: <Item> <Sub-Item> <Colour> (Colour left out when it is N/A) */
+  const prodName = l => [l.item, l.sub, l.colour && l.colour.toUpperCase() !== 'N/A' ? l.colour : ''].map(x => sval(x)).filter(Boolean).join(' ');
   const isoOf = v => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : '');
   function counterReport(code) {
     const want = norm(code), today = U.todayIso();
     const n = v => { const x = Number(v); return isFinite(x) ? x : 0; }, r2 = x => Math.round(x * 100) / 100;
     const mob = v => (typeof v === 'number' ? String(v) : sval(v));
-    const line = (T, r) => ({ sub: sval(T.get(r, 'sub item', 'sub-item')), colour: sval(T.get(r, 'colour')), qty: n(T.get(r, 'qty')), price: n(T.get(r, 'price')) });
+    const line = (T, r) => ({ item: sval(T.get(r, 'item')), sub: sval(T.get(r, 'sub item', 'sub-item')), colour: sval(T.get(r, 'colour')), qty: n(T.get(r, 'qty')), price: n(T.get(r, 'price')) });
     const out = { today, name: '', market: '', code, mobile: '', gstin: '', beat: '', dso: '' };
     let T = RT('Payments Received'); const payments = [];
     T.rows.forEach(r => {
@@ -700,7 +702,7 @@
                    'Mobile No.: ' + (mobile || 'None'), 'GSTIN/PAN: ' + (gstin || 'None'), 'Remarks: ' + (rem || 'None'), 'Interest in Cooler: ' + cooler.value];
       if (lines.length) {
         sum.push('', '_*Orders:*_');
-        lines.forEach(l => sum.push(l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : ''), l.qty + ' pc. @ ' + money(l.rate)));
+        lines.forEach(l => sum.push(prodName(l), l.qty + ' pc. @ ' + money(l.rate)));
         sum.push('*Total Order Value:* ' + money(roundRupee(lines.reduce((a, l) => a + l.qty * l.rate, 0))), 'Payment Terms: ' + tm);
       }
       if (pays.length) sum.push('', '_*Payments:*_', ...payText(pays));
