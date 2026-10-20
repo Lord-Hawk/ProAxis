@@ -204,8 +204,8 @@
   class PaymentRows {
     constructor(o) {
       this.rows = []; this.onChange = o && o.onChange;
-      this.host = h('div'); this.empty = h('p', { class: 'hint' }, 'No payment added. Tap “＋ Other Payment Mode” if money was received.');
-      this.addBtn = h('button', { type: 'button', class: 'btn ghost', onclick: () => this.addRow(true) }, '＋ Other Payment Mode');
+      this.host = h('div'); this.empty = h('p', { class: 'hint' }, 'No payment added. Tap “＋ Payment” if money was received.');
+      this.addBtn = h('button', { type: 'button', class: 'btn ghost', onclick: () => this.addRow(true) }, '＋ Payment');
       this.totalEl = h('b', { class: 'total' }, '₹ 0');
       this.el = h('div', {}, this.host, this.empty, h('div', { class: 'row-between wrap' }, this.addBtn, h('div', { class: 'totalbox' }, 'Total Payment Received: ', this.totalEl)));
       this.update();
