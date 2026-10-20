@@ -217,6 +217,7 @@
     if (pos === 'Head of Operations') main.append(card('BEAT TARGETS', 'View markets of any beat, and targets achieved', 'gold', () => beatView()));
     else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, and targets achieved", 'gold', () => beatView()));
     else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
+    main.append(card('COUNTER SEARCH', "View any counter's visits, orders, invoices and more", 'teal', () => counterView()));
     const fl = failedList(); if (fl) main.append(fl);
   }
 
@@ -227,6 +228,75 @@
   const marketCodeOf = U.marketCode;
   const needIso = s => { if (!U.parseIso(s)) throw new Error('Enter a valid date.'); return s; };
   function tryRun(fn, msg) { try { return fn(); } catch (e) { say(msg, e.message, true); return undefined; } }
+
+  /* ------------------------------------------------------------------ Counter Search: one counter's visits, orders, invoices, payments, pending */
+  function counterView() {
+    const main = shell('Counter Search', home);
+    const out = h('div');
+    const rs = x => '₹' + Number(x || 0).toLocaleString('en-IN', Number.isInteger(+x) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const longDate = iso => { const d = U.parseIso(iso); return d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : ''; };
+    const shortDate = iso => { const d = U.parseIso(iso); return d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }) : ''; };
+    const markets = () => Object.keys(model.marketCounters).filter(m => Object.keys(model.marketCounters[m]).length).sort((a, b) => a.localeCompare(b));
+    const market = new Combo({ placeholder: 'Market', strict: true, values: markets, onChange: () => { counter.set(''); out.replaceChildren(); } });
+    const counter = new Combo({ placeholder: 'Counter', strict: true, values: () => model.countersFor(market.get()), onChange: v => { if (v) load(); else out.replaceChildren(); } });
+    let tab = 'visits', seq = 0;
+    const pill = (txt, kind) => h('span', { class: 'pill ' + kind }, txt);
+    const prodLine = l => l.sub + (l.colour && l.colour.toUpperCase() !== 'N/A' ? ' ' + l.colour : '') + ' × ' + l.qty + ' @ ' + rs(l.price);
+    const box = (title, ...rows) => h('div', { class: 'cs-box' }, h('h4', {}, title), ...rows);
+    const row = (left, right) => h('div', { class: 'cs-row' }, h('div', { class: 'cs-l' }, ...left), h('div', { class: 'cs-r' }, ...right));
+    const sub = t => h('div', { class: 'cs-sub' }, t);
+    const big = t => h('div', { class: 'cs-main' }, t);
+    const empty = t => h('p', { class: 'hint' }, t);
+    async function load() {
+      const c = model.findCounter(market.get(), counter.get()); if (!c) return;
+      const my = ++seq;
+      out.replaceChildren(h('p', { class: 'hint' }, 'Loading…'));
+      let r;
+      try { r = await authed('counter_report', { code: c.code }, 60000); }
+      catch (e) { if (my === seq) out.replaceChildren(h('div', { class: 'msg bad' }, e.offline ? 'No internet – Counter Search needs a connection.' : e.message)); return; }
+      if (my !== seq) return;
+      draw(r, c);
+    }
+    function draw(r, c) {
+      const head = h('div', { class: 'cs-head' }, h('b', {}, r.name || c.name),
+        h('span', {}, [r.market || c.market, r.beat ? 'Beat ' + r.beat : '', r.dso ? 'DSO ' + r.dso : ''].filter(Boolean).join(' · ')));
+      const stat = (k, v, cls) => h('div', { class: 'cs-stat' }, h('span', {}, k), h('b', { class: cls || '' }, rs(v)));
+      const stats = h('div', { class: 'cs-stats' }, stat('Order Value', r.orderValue), stat('Billed', r.billed), stat('Received', r.received, 'good'), stat('Pending', r.pending, r.pending > 0 ? 'bad' : 'good'));
+      const TABS = [['visits', 'Visits'], ['orders', 'Orders'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['pending', 'Pending']];
+      const body = h('div', { class: 'cs-body' });
+      const tabs = h('div', { class: 'cs-tabs', role: 'tablist' }, ...TABS.map(([k, t]) => h('button', { type: 'button', class: k === tab ? 'on' : '', onclick: () => { tab = k; [...tabs.children].forEach((b, i) => b.classList.toggle('on', TABS[i][0] === k)); fill(); } }, t)));
+      function fill() {
+        let parts = [];
+        if (tab === 'visits') {
+          const month = r.today.slice(0, 7), thisMonth = r.visits.filter(v => v.date.slice(0, 7) === month).length;
+          const last = r.visits[0] ? Math.round((U.parseIso(r.today) - U.parseIso(r.visits[0].date)) / 864e5) : null;
+          parts = [box('Visit history (all time)', ...(r.visits.length ? r.visits.map(v => row([big(longDate(v.date)), sub([v.dso, v.beat ? 'Beat ' + v.beat : 'Out of Beat'].filter(Boolean).join(' · '))],
+                   [h('div', { class: 'pills' }, ...(v.order && v.payment ? [pill('Order taken', 'green'), pill('Payment', 'blue')] : v.order ? [pill('Order taken', 'green')] : v.payment ? [pill('Payment only', 'blue')] : [pill('No order', 'yellow')]))])) : [empty('No visits yet.')])),
+                   box('This month', h('div', { class: 'cs-line' }, 'Visits: ', h('b', {}, String(thisMonth)), '   Last visit: ', h('b', {}, last == null ? '–' : last === 0 ? 'today' : last === 1 ? '1 day ago' : last + ' days ago')))];
+        } else if (tab === 'orders') {
+          parts = [box('Orders', ...(r.orders.length ? r.orders.map(o => row([big(o.no), ...o.lines.map(l => sub(prodLine(l)))], [h('div', { class: 'cs-amt' }, rs(o.total)), o.terms ? pill(o.terms, o.terms === 'COD' ? 'green' : 'blue') : null])) : [empty('No orders yet.')])),
+                   box('Total orders (all time)', h('div', { class: 'cs-total' }, rs(r.orderValue)))];
+        } else if (tab === 'invoices') {
+          const kind = { 'Paid': 'green', 'Part paid': 'yellow', 'Unpaid': 'red', 'Cancelled': 'grey' };
+          parts = [box('Invoices', ...(r.invoices.length ? r.invoices.map(i => row([big(i.no), sub((i.orderNo ? 'Order ' + i.orderNo + ' · ' : '') + shortDate(i.date)), ...i.lines.map(l => sub(prodLine(l)))], [h('div', { class: 'cs-amt' }, rs(i.total)), pill(i.status, kind[i.status])])) : [empty('No invoices yet.')])),
+                   box('Total billed (all time)', h('div', { class: 'cs-total' }, rs(r.billed)))];
+        } else if (tab === 'payments') {
+          parts = [box('Payments received', ...(r.payments.length ? r.payments.map(p => row([big(shortDate(p.date)), ...p.modes.map(m => sub(m.mode + ': ' + rs(m.amount)))], [h('div', { class: 'cs-amt' }, rs(p.total))])) : [empty('No payments yet.')])),
+                   box('Total payment (all time)', h('div', { class: 'cs-total good' }, rs(r.received)))];
+        } else {
+          const due = r.invoices.filter(i => !i.cancelled && i.pending > 0).sort((a, b) => (a.due < b.due ? -1 : 1));
+          const left = iso => { const d = Math.round((U.parseIso(iso) - U.parseIso(r.today)) / 864e5); return d > 0 ? pill(d + (d === 1 ? ' day left' : ' days left'), 'green') : d === 0 ? pill('Due today', 'yellow') : pill(-d + (d === -1 ? ' day overdue' : ' days overdue'), 'red'); };
+          parts = [box('Due dates', ...(due.length ? due.map(i => row([big(i.no), sub('Billed ' + rs(i.total) + (i.paid > 0 ? ' · paid ' + rs(i.paid) : '') + (i.terms ? ' · ' + i.terms : ''))], [h('div', { class: 'cs-amt' }, longDate(i.due)), left(i.due)])) : [empty('Nothing pending.')])),
+                   box('Total pending', h('div', { class: 'cs-total ' + (r.pending > 0 ? 'bad' : 'good') }, rs(r.pending)))];
+        }
+        body.replaceChildren(...parts);
+      }
+      fill();
+      out.replaceChildren(h('div', { class: 'cs-card' }, head, stats, tabs, body));
+    }
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Counter Search'), field('Market', market.el), field('Counter', counter.el)), out);
+    currentView = { onData() {} };
+  }
 
   /* ------------------------------------------------------------------ summary popup after a DSO submit (copy / share as plain text) */
   const dmyShort = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? (+m[3]) + '/' + (+m[2]) + '/' + m[1].slice(2) : ''; };
