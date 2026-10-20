@@ -4,7 +4,7 @@
   const CFG = window.PROAXIS_CONFIG;
   const REMARKS = ['Next Week Visit', 'Next Month Visit'], REMARK_DAYS = { 'next week visit': 14, 'next month visit': 28 };
   const TERMS = ['COD', '15 Days', '30 Days', '45 Days'], TERM_DAYS = { 'COD': 0, '15 Days': 14, '30 Days': 28, '45 Days': 42 };
-  const POSITIONS = ['Head of Operations', 'Admin', 'Accountant', 'DSO'];
+  const POSITIONS = ['Head of Operations', 'Manager', 'Accountant', 'DSO'];
   const NO_BEAT = '(no beat)';
   const root = document.getElementById('app');
 
@@ -123,13 +123,13 @@
     return true;
   }
   let blocked = false;
-  function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name; }
+  function profileChanged(a, b) { return !a || !b || a.position !== b.position || a.name !== b.name || (a.title || '') !== (b.title || ''); }
   async function bootstrapNow() {
     const before = S.profile;
     const r = await authed('bootstrap', {});
     S.snapshot = r.data; S.profile = r.profile; S.verifiedAt = Date.now(); lastRefresh = Date.now();
     save('snapshot'); save('profile'); save('verifiedAt'); rebuildModel();
-    if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + r.profile.position); home(); }       // new role -> new screens
+    if (profileChanged(before, r.profile)) { U.toast('Your role is now ' + (r.profile.title || r.profile.position)); home(); }       // new role -> new screens
     else if (currentView && currentView.onData) currentView.onData();
     refreshReports().catch(() => {});                                     // report data: in the background, only if it changed
   }
@@ -156,6 +156,120 @@
     } finally { syncing = false; setStatus(); }
   }
   function blockedView() {
+    currentView = null; statusEl = null;
+    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' })),
+      h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Access stopped'),
+        h('p', {}, 'The owner has blocked this device, so ProAxis cannot be used on it. The app starts working again by itself if the owner sets the Status back to Active.'),
+        h('button', { class: 'btn big', onclick: () => sync(true) }, 'Check again'))));
+  }
+  function deregister(msg) {
+    ['token', 'profile', 'snapshot', 'verifiedAt', 'outbox', 'failed', 'rdata', 'rep'].forEach(k => store.del(k)); RD.data = null;
+    S.profile = null; S.snapshot = null; S.outbox = []; S.failed = []; delete mem.token;
+    start(msg);
+  }
+  const submitJob = job => { S.outbox.push(job); save('outbox'); model.applyOverlay(job.overlay); setStatus(); sync(false); };
+  window.addEventListener('online', () => { online = true; sync(true); });
+  window.addEventListener('offline', () => { online = false; setStatus(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(true); });
+  setInterval(() => { if (!document.hidden) { sync(false); if (currentView && currentView.tick) currentView.tick(); } }, 20000);
+
+  /* ------------------------------------------------------------------ shell (top bar + view) */
+  function shell(title, onBack) {
+    statusEl = h('span', { class: 'status' });
+    const bar = h('header', { class: 'top' },
+      onBack ? h('button', { class: 'back', onclick: onBack, 'aria-label': 'Home' }, '←') : h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' }),
+      h('div', { class: 'who' }, h('b', {}, title || ''), h('small', {}, `${S.profile.name} · ${S.profile.title || S.profile.position}`)),
+      statusEl, h('button', { class: 'sync', onclick: () => { sync(true); U.toast('Syncing…'); }, 'aria-label': 'Sync now' }, '↻'));
+    const main = h('main', { class: 'page' });
+    root.replaceChildren(bar, main);
+    setStatus();
+    return main;
+  }
+  const msgBox = () => h('div', { class: 'msg', role: 'status' });
+  const say = (el, text, bad) => { el.textContent = text; el.className = 'msg ' + (bad ? 'bad' : 'ok'); if (text) el.scrollIntoView({ block: 'nearest' }); };
+  const submitBar = (label, onSubmit, onClear, msg) => h('div', { class: 'submitbar' }, h('button', { class: 'btn big', onclick: onSubmit }, label), h('button', { class: 'btn gray', onclick: onClear }, 'Clear form'), msg);
+
+  /* ------------------------------------------------------------------ registration */
+  function registerView(notice) {
+    currentView = null;
+    const st = { step: 1, requestId: null, sentTo: '' };
+    const v = { position: '', mgmtRole: '', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
+    const box = h('div', { class: 'card' });
+    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' })), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
+    const err = msgBox();
+    const inp = (label, key, attrs) => { const i = h('input', Object.assign({ class: 'inp', value: v[key], autocomplete: 'off' }, attrs || {})); i.addEventListener('input', () => { v[key] = i.value; }); return field(label, i); };
+    function step1() {
+      Loc.refresh();
+      const sel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...POSITIONS.map(p => h('option', { value: p }, p)));
+      sel.value = v.position;
+      const headBox = h('div');
+      const roleBox = h('div');                                       // Manager: "Management Role (One word only)"
+      const drawRole = () => roleBox.replaceChildren(...(v.position === 'Manager' ? [inp('Management Role (One word only)', 'mgmtRole', { autocapitalize: 'words', placeholder: 'e.g. Sales' })] : []));
+      const draw = () => { headBox.replaceChildren(...(!v.position ? [] : v.position === 'Head of Operations' ? [h('p', { class: 'hint' }, 'Open your records Google Sheet, share it (as Editor) with verify.proaxis@gmail.com, then paste its link here. Everyone who registers under you will use this sheet.'), inp('Records Google Sheet link', 'recordsLink', { type: 'url', inputmode: 'url', autocapitalize: 'off' })] : [h('p', { class: 'hint' }, 'Your Head of Operations must be registered already. The OTP goes to them.'), inp('Head of Operations – First Name', 'headName'), inp('Head of Operations – email', 'headEmail', { type: 'email', inputmode: 'email', autocapitalize: 'off' })])); };
+      const emailF = inp('Email ID (Optional)', 'email', { type: 'email', inputmode: 'email', autocapitalize: 'off' });
+      const emailLbl = () => { emailF.querySelector('.lbl').textContent = v.position === 'Head of Operations' ? 'Email ID' : 'Email ID (Optional)'; };
+      sel.addEventListener('change', () => { v.position = sel.value; draw(); emailLbl(); drawRole(); });
+      draw(); emailLbl(); drawRole();
+      const go = h('button', { class: 'btn big', onclick: async () => {
+        if (!v.position) { say(err, 'Select the Position first.', true); return; }
+        if (v.position === 'Manager' && !/^[A-Za-z][A-Za-z&.\-]{0,29}$/.test(v.mgmtRole.trim())) { say(err, 'Enter your Management Role as ONE word, e.g. Sales.', true); return; }
+        v.mgmtRole = v.mgmtRole.trim();
+        go.disabled = true; say(err, '');
+        try {
+          const r = await api('register_request', Object.assign({ deviceType: await deviceType(), location: Loc.get() }, v));
+          st.requestId = r.requestId; st.sentTo = r.sentTo; step2();
+        } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
+      } }, 'Send OTP');
+      box.replaceChildren(h('h2', {}, 'Register this device'), field('Position', sel), roleBox, inp('First Name', 'name'), inp('Mobile No.', 'mobile', { type: 'tel', inputmode: 'tel' }),
+        emailF, headBox, go, err);
+    }
+    function step2() {
+      const otp = h('input', { class: 'inp otp', inputmode: 'numeric', maxlength: '6', placeholder: '6-digit OTP', autocomplete: 'one-time-code' });
+      const go = h('button', { class: 'btn big', onclick: async () => {
+        go.disabled = true; say(err, '');
+        try {
+          const r = await api('register_verify', Object.assign({ requestId: st.requestId, otp: otp.value, deviceId: deviceId(), deviceType: await deviceType(), location: Loc.get() }, v));
+          store.set('token', r.token); mem.token = r.token; S.profile = r.profile; save('profile');
+          box.replaceChildren(h('h2', {}, 'This device has been registered'), h('button', { class: 'btn big', onclick: () => start() }, 'Next'));
+        } catch (e) { say(err, e.message, true); } finally { go.disabled = false; }
+      } }, 'Verify');
+      box.replaceChildren(h('h2', {}, 'Enter the OTP'), h('p', { class: 'hint' }, 'The OTP was emailed to ' + st.sentTo + '. Ask them for it.'), otp, go,
+        h('button', { class: 'btn gray', onclick: step1 }, 'Back'), err);
+      otp.focus();
+    }
+    step1();
+  }
+
+  /* ------------------------------------------------------------------ homes */
+  const card = (title, caption, cls, fn) => h('button', { class: 'homecard ' + cls, onclick: fn }, h('b', {}, title), h('span', {}, caption));
+  function failedList() {
+    if (!S.failed.length) return null;
+    return h('div', { class: 'card warnbox' }, h('b', {}, 'These entries could not be saved:'),
+      ...S.failed.map((f, i) => h('div', { class: 'failed' }, h('div', {}, f.label), h('small', {}, f.error), h('div', { class: 'row-between' },
+        f.job ? h('button', { class: 'btn small', onclick: () => { S.failed.splice(i, 1); save('failed'); S.outbox.push(f.job); save('outbox'); home(); sync(false); } }, 'Try again') : null,
+        h('button', { class: 'btn small gray', onclick: () => { S.failed.splice(i, 1); save('failed'); home(); } }, 'Discard')))));
+  }
+  function home() {
+    const pos = S.profile.position;
+    const main = shell('Home');
+    currentView = { onData() {} };
+    if (pos === 'DSO' || pos === 'Manager') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
+    if (pos === 'Head of Operations') main.append(card('BEAT DETAILS', 'View markets of any beat, targets achieved and payments pending', 'gold', () => beatView()));
+    else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, targets achieved and payments pending", 'gold', () => beatView()));
+    else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
+    main.append(card('COUNTER SEARCH', "View any counter's visits, orders, invoices and more", 'teal', () => counterView()));
+    const fl = failedList(); if (fl) main.append(fl);
+  }
+
+  /* ------------------------------------------------------------------ shared pieces */
+  const dateBox = (iso, onChange) => { const i = h('input', { type: 'date', class: 'inp', value: iso }); i.addEventListener('change', () => { onChange && onChange(i.value); }); i.get = () => i.value; return i; };
+  const roundRupee = x => Math.round(x + 1e-9);
+  const plain = x => (Number.isInteger(x) ? x : +x.toFixed(2));
+  const marketCodeOf = U.marketCode;
+  const needIso = s => { if (!U.parseIso(s)) throw new Error('Enter a valid date.'); return s; };
+  function tryRun(fn, msg) { try { return fn(); } catch (e) { say(msg, e.message, true); return undefined; } }
+
+  /* -----------w() {
     currentView = null; statusEl = null;
     root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' })),
       h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Access stopped'),
