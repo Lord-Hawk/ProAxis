@@ -1,8 +1,8 @@
 {
   "id": "./index.html",
-  "name": "ProAxis",
-  "short_name": "ProAxis",
-  "description": "ProAxis sales and invoice entry",
+  "name": "ProMandi",
+  "short_name": "ProMandi",
+  "description": "ProMandi sales and invoice entry",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

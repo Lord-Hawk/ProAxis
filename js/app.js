@@ -1,7 +1,7 @@
-/* ProAxis mobile - server link, offline queue, registration and the role screens */
+/* ProMandi mobile - server link, offline queue, registration and the role screens */
 (function () {
   const { h, norm, sval, clean } = U;
-  const CFG = window.PROAXIS_CONFIG;
+  const CFG = window.PROMANDI_CONFIG;
   const REMARKS = ['Next Week Visit', 'Next Month Visit'], REMARK_DAYS = { 'next week visit': 14, 'next month visit': 28 };
   const TERMS = ['COD', '15 Days', '30 Days', '45 Days'], TERM_DAYS = { 'COD': 0, '15 Days': 14, '30 Days': 28, '45 Days': 42 };
   const POSITIONS = ['Head of Operations', 'Manager', 'Accountant', 'DSO'];
@@ -157,9 +157,9 @@
   }
   function blockedView() {
     currentView = null; statusEl = null;
-    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' })),
+    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProMandi' })),
       h('main', { class: 'page narrow' }, h('div', { class: 'card' }, h('h2', {}, 'Access stopped'),
-        h('p', {}, 'The owner has blocked this device, so ProAxis cannot be used on it. The app starts working again by itself if the owner sets the Status back to Active.'),
+        h('p', {}, 'The owner has blocked this device, so ProMandi cannot be used on it. The app starts working again by itself if the owner sets the Status back to Active.'),
         h('button', { class: 'btn big', onclick: () => sync(true) }, 'Check again'))));
   }
   function deregister(msg) {
@@ -177,7 +177,7 @@
   function shell(title, onBack) {
     statusEl = h('span', { class: 'status' });
     const bar = h('header', { class: 'top' },
-      onBack ? h('button', { class: 'back', onclick: onBack, 'aria-label': 'Home' }, '←') : h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' }),
+      onBack ? h('button', { class: 'back', onclick: onBack, 'aria-label': 'Home' }, '←') : h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProMandi' }),
       h('div', { class: 'who' }, h('b', {}, title || ''), h('small', {}, `${S.profile.name} · ${S.profile.title || S.profile.position}`)),
       statusEl, h('button', { class: 'sync', onclick: () => { sync(true); U.toast('Syncing…'); }, 'aria-label': 'Sync now' }, '↻'));
     const main = h('main', { class: 'page' });
@@ -195,7 +195,7 @@
     const st = { step: 1, requestId: null, sentTo: '' };
     const v = { position: '', mgmtRole: '', name: '', mobile: '', email: '', headName: '', headEmail: '', recordsLink: '' };
     const box = h('div', { class: 'card' });
-    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProAxis' })), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
+    root.replaceChildren(h('header', { class: 'top' }, h('img', { class: 'logo', src: 'icons/logo-bar.png', alt: 'ProMandi' })), h('main', { class: 'page narrow' }, notice ? h('div', { class: 'msg bad' }, notice) : null, box));
     const err = msgBox();
     const inp = (label, key, attrs) => { const i = h('input', Object.assign({ class: 'inp', value: v[key], autocomplete: 'off' }, attrs || {})); i.addEventListener('input', () => { v[key] = i.value; }); return field(label, i); };
     function step1() {
@@ -1007,17 +1007,17 @@
       const ol = (...items) => h('ol', {}, ...items.map(x => h('li', {}, x)));
       const ov = h('div', { class: 'modal', onclick: e => { if (e.target === ov) close(); } },
         h('div', { class: 'modal-box', role: 'dialog', 'aria-label': 'How to install and register' },
-          h('div', { class: 'row-between modal-head' }, h('h2', {}, 'Install & register ProAxis'), h('button', { class: 'x', onclick: close, 'aria-label': 'Close' }, '✕')),
+          h('div', { class: 'row-between modal-head' }, h('h2', {}, 'Install & register ProMandi'), h('button', { class: 'x', onclick: close, 'aria-label': 'Close' }, '✕')),
           h('div', { class: 'modal-body' },
             sec('1. Install the app – Android (Chrome)',
               ol('Open this page in Google Chrome.', 'Tap the gold “Install as Mobile App” button at the bottom.', 'Tap “Install” in the box that appears.',
-                 'Wait a few seconds: “ProAxis” appears on your home screen and in your app list like any other app.',
+                 'Wait a few seconds: “ProMandi” appears on your home screen and in your app list like any other app.',
                  'If no box appears: tap ⋮ (top right in Chrome) → “Install app” (or “Add to Home screen” → “Install”).')),
             sec('1. Install the app – iPhone / iPad (Safari)',
               ol('Open this page in Safari (installing does not work from Chrome on iPhone).', 'Tap the Share button (the square with an arrow, at the bottom).',
-                 'Scroll down and tap “Add to Home Screen”.', 'Tap “Add” (top right). “ProAxis” appears on your home screen.')),
+                 'Scroll down and tap “Add to Home Screen”.', 'Tap “Add” (top right). “ProMandi” appears on your home screen.')),
             sec('2. Open it from the home screen',
-              h('p', {}, 'Always open ProAxis from its home-screen icon, not from the browser. Allow location when it asks – visits record where they were logged.')),
+              h('p', {}, 'Always open ProMandi from its home-screen icon, not from the browser. Allow location when it asks – visits record where they were logged.')),
             sec('3. Register this device (one time)',
               h('p', {}, 'Choose your Position, then fill in your Name, Mobile No. and Email ID. Then, depending on the Position:'),
               h('p', {}, h('b', {}, 'Head of Operations')),
@@ -1037,7 +1037,7 @@
       if (deferred) {
         const ev = deferred; deferred = null;
         ev.prompt();
-        try { const r = await ev.userChoice; if (r && r.outcome === 'accepted') { hide(); U.toast('Installing ProAxis – it will appear on your home screen.'); } } catch (e) {}
+        try { const r = await ev.userChoice; if (r && r.outcome === 'accepted') { hide(); U.toast('Installing ProMandi – it will appear on your home screen.'); } } catch (e) {}
       } else help();                                       // iPhone, or the browser cannot install directly: show the steps
     }
     function show() {
@@ -1054,7 +1054,7 @@
   })();
   Install.show();
 
-  window.ProAxis = { start, model, S, sync };
+  window.ProMandi = { start, model, S, sync };
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   start();
 })();
