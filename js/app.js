@@ -254,8 +254,7 @@
     const main = shell('Home');
     currentView = { onData() {} };
     if (pos === 'DSO' || pos === 'Manager') main.append(card('LOG VISITS', 'Log the visits to the counters of each day', 'blue', () => visitView()), card('LOG PAYMENTS', 'Payments received outside of visits', 'green', () => payView()));
-    if (pos === 'Head of Operations') main.append(card('BEAT DETAILS', 'View markets of any beat, targets achieved and payments pending', 'gold', () => beatView()));
-    else if (pos !== 'Accountant') main.append(card("TODAY'S BEAT", "View the markets of today's beat, targets achieved and payments pending", 'gold', () => beatView()));
+    if (pos !== 'Accountant') main.append(card('BEAT DETAILS', 'View markets of any beat, targets achieved and payments pending', 'gold', () => beatView()));
     else if (pos === 'Accountant') main.append(card('LOG INWARD INVOICES', 'Log the products that came in', 'green', () => inwardView()), card('LOG OUTWARD INVOICES', 'Log the invoices raised to the counters', 'blue', () => outwardView()), card('EDIT PREVIOUS INVOICE', 'Change, add or remove products of an outward invoice, or cancel it', 'slate', () => editView()));
     main.append(card('COUNTER SEARCH', "View any counter's visits, orders, invoices and more", 'teal', () => counterView()));
     const fl = failedList(); if (fl) main.append(fl);
@@ -486,7 +485,7 @@
     const sheets = d.markets || [];
     const who = pos === 'DSO' ? S.profile.name : dso;
     const out = { dsos: pos === 'DSO' ? [] : sheets.map(x => x.name), date: today, beat: (d.cal || {})[today] || model.beatForDate(today) || '' };
-    if (pos === 'Head of Operations' && /^(Mon|Tue|Wed|Thu|Fri|Sat)_[1-4]$/.test(pickBeat || '')) out.beat = pickBeat;
+    if (pickBeat) out.beat = pickBeat;                                    // the beat chosen in the Beat dropdown
     if (!who) return out;
     const ms = sheets.find(x => norm(x.name) === norm(who));
     out.dso = ms ? ms.name : who;
@@ -536,15 +535,25 @@
 
   /* ------------------------------------------------------------------ Today's Beat: markets, monthly target, this month's orders, achieved % */
   function beatView() {
-    const title = S.profile.position === 'Head of Operations' ? 'Beat Details' : "Today's Beat";
+    const title = 'Beat Details';
     const main = shell(title, home);
     const pos = S.profile.position, picks = pos !== 'DSO';
     const out = h('div');
     const inr0 = x => '₹' + Math.round(x).toLocaleString('en-IN');
     const sel = picks ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----')) : null;
-    const isHead = pos === 'Head of Operations';                     // the Head also chooses the beat: Mon_1 ... Sat_4 in date order
-    const BEATS = []; [1, 2, 3, 4].forEach(w => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => BEATS.push(d + '_' + w)));
-    const beatSel = isHead ? h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), ...BEATS.map(b => h('option', { value: b }, b))) : null;
+    const BEATS = []; ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => [1, 2, 3, 4].forEach(w => BEATS.push(d + '_' + w)));   // Mon_1 … Mon_4, Tue_1 … Sat_4
+    /* Beat dropdown for everyone: all the beats, today's beat chosen at the start and shown as "Today (<beat>)" */
+    const beatSel = h('select', { class: 'inp' });
+    let beatDay = '';
+    function fillBeats() {
+      const day = U.todayIso(), tb = ((RD.data && RD.data.cal) || {})[day] || model.beatForDate(day) || '';
+      const keep = beatDay === day ? beatSel.value : tb;                    // a new day: today's beat again
+      beatDay = day;
+      const list = BEATS.slice(); if (tb && !list.includes(tb)) list.unshift(tb);
+      beatSel.replaceChildren(h('option', { value: '' }, '---- Select ----'), ...list.map(b => h('option', { value: b }, b === tb ? 'Today (' + b + ')' : b)));
+      beatSel.value = list.includes(keep) ? keep : '';
+    }
+    fillBeats();
     const detSel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'targets' }, 'Beat Targets'), h('option', { value: 'pending' }, 'Payments Pending'));
     let lastDso = '';
     const monthOf = iso => { const d = U.parseIso(iso); return d ? d.toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
@@ -555,19 +564,17 @@
       }
       return render(beatReport(dso, beatSel ? beatSel.value : ''), dso);
     }
-    const again = () => { if (document.body.contains(out)) load(lastDso); else RD.subs.delete(again); };   // newer data arrived
+    const again = () => { if (!document.body.contains(out)) return RD.subs.delete(again); if (!beatSel.value) fillBeats(); load(lastDso); };   // newer data arrived
     RD.subs.add(again);
     function render(r, dso) {
       if (sel && sel.options.length === 1) (r.dsos || []).forEach(n => sel.append(h('option', { value: n }, n)));
-      if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, isHead ? 'Select a DSO and a Beat to see its markets.' : 'Select a DSO to see the markets of today’s beat.')); return r; }
-      if (isHead && !beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
+      if (picks && !dso) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a DSO to see the markets.')); return r; }
+      if (!beatSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select a Beat to see its markets.')); return r; }
       if (!detSel.value) { out.replaceChildren(h('p', { class: 'hint' }, 'Select what to see under Details.')); return r; }
       const item = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
       const who = r.dso || dso || S.profile.name;
       if (detSel.value === 'pending') return renderPending(r, who, item);
-      const info = isHead
-        ? h('div', { class: 'beatinfo' }, item('DSO', who), item('Month', monthOf(r.date)), item('Beat', r.beat || '–'))
-        : h('div', { class: 'beatinfo' }, item('Date', dmyShort(r.date)), item('Beat', r.beat || '–'), item('Month', monthOf(r.date)), item('DSO', who));
+      const info = h('div', { class: 'beatinfo' }, item('DSO', who), item('Month', monthOf(r.date)), item('Beat', beatLabel(r.beat)));
       if (r.error) { out.replaceChildren(info, h('div', { class: 'msg bad' }, r.error)); return r; }
       const rows = r.rows || [];
       if (!rows.length) { out.replaceChildren(info, h('p', { class: 'hint' }, 'No markets are listed for this beat in the markets sheet.')); return r; }
@@ -588,8 +595,7 @@
     }
     /* Payments Pending: the counters of the beat's markets whose bills (all time) are not fully paid */
     function renderPending(r, who, item) {
-      const info = isHead ? h('div', { class: 'beatinfo' }, item('DSO', who), item('Beat', r.beat || '–'))
-                          : h('div', { class: 'beatinfo' }, item('Date', dmyShort(r.date)), item('Beat', r.beat || '–'), item('DSO', who));
+      const info = h('div', { class: 'beatinfo' }, item('DSO', who), item('Beat', beatLabel(r.beat)));
       if (r.error) { out.replaceChildren(info, h('div', { class: 'msg bad' }, r.error)); return r; }
       const acc = counterBalances(), byMarket = {};
       Object.values(acc).forEach(c => { if (c.billed - c.received > 0.005) (byMarket[c.market] = byMarket[c.market] || []).push(c); });
@@ -603,11 +609,13 @@
       return r;
     }
     if (sel) sel.addEventListener('change', () => { lastDso = sel.value; load(lastDso); });
-    if (beatSel) beatSel.addEventListener('change', () => { if (lastDso) load(lastDso); });
+    const beatLabel = b => { const o = [...beatSel.options].find(x => x.value === b); return o && b ? o.textContent : (b || '–'); };
+    beatSel.addEventListener('change', () => load(lastDso));
     detSel.addEventListener('change', () => load(lastDso));
     main.append(h('section', { class: 'card' }, h('h3', {}, title), sel ? field('DSO', sel) : null, beatSel ? field('Beat', beatSel) : null, field('Details', detSel), out));
     load('');
-    currentView = { onData() {} };
+    currentView = { onData() { if (beatDay !== U.todayIso() || !beatSel.value) { fillBeats(); load(lastDso); } },
+                    tick() { if (beatDay !== U.todayIso()) { fillBeats(); load(lastDso); } } };     // after midnight: the new day's beat
   }
 
   /* ------------------------------------------------------------------ DSO: visit */
