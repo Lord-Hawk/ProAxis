@@ -758,18 +758,25 @@
   function inwardView() {
     const main = shell('Log Inward Invoices', home), msg = msgBox();
     const date = dateBox(U.todayIso());
+    const invNo = h('input', { class: 'inp', placeholder: 'Invoice No.', autocomplete: 'off', autocapitalize: 'characters' });
+    const disc = discountBox();
     const area = new ProductRows({ model, rateFn: (c, k) => model.buyRateFor(c, k), emptyText: 'No product added. Tap “＋ Add Product” to start the inward invoice.', totalLabel: 'Total Inward Amount' });
-    const clear = () => area.clear();
-    main.append(h('section', { class: 'card' }, h('h3', {}, 'Inward invoice'), field('Date', date)),
+    const clear = () => { area.clear(); invNo.value = ''; disc.value = ''; };
+    main.append(h('section', { class: 'card' }, h('h3', {}, 'Inward invoice'), h('div', { class: 'grid2' }, field('Date', date), field('Invoice Number', invNo))),
       h('section', { class: 'card' }, h('h3', {}, 'Products – quantity and buy price'), area.el),
+      h('section', { class: 'card' }, h('h3', {}, 'Cash discount %'), field('Cash discount % (numbers only, e.g. 2.5)', disc)),
       submitBar('SUBMIT INWARD INVOICE', () => {
         area.commitAll();
         const job = tryRun(() => {
-          const ds = needIso(date.get()), lines = area.lines();
+          const ds = needIso(date.get()), no = clean(invNo.value);
+          if (!no) throw new Error('Enter the Invoice Number.');
+          if (Object.keys(model.inwardInvoices).some(k => norm(k) === norm(no))) throw new Error('Inward invoice ' + no + ' already exists.\nUse Edit Previous Invoice → Inward to change it.');
+          const d = discountOf(disc), lines = area.lines();
           if (!lines.length) throw new Error('Add at least one product.');
-          const rows = lines.map(l => ({ date: ds, type: l.type, item: l.item, 'sub-item': l.sub, colour: l.colour, 'inwards qty': l.qty, 'buy price': plain(l.rate), 'qty x price': plain(U.mul(l.qty, l.rate)) }));
+          const rows = inwardRows(ds, no, d, lines);
           const total = lines.reduce((a, l) => a + l.qty * l.rate, 0);
-          return { id: U.uuid(), label: 'inward invoice ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Inwards', rows }], overlay: { inwards: rows } };
+          return { id: U.uuid(), label: 'inward invoice ' + no + '  |  ₹' + roundRupee(total).toLocaleString('en-IN'), parts: [{ sheet: 'Inwards', rows }],
+                   overlay: { inwards: rows, inwardInvoice: { no, data: inwardData(ds, d, lines) } } };
         }, msg);
         if (!job) return;
         submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online')); clear();
@@ -829,8 +836,82 @@
     currentView = { onData() { counterChanged(); } };
   }
 
+  /* Cash discount %: numbers only (a typed % sign is removed); empty = 0 */
+  function discountBox() {
+    const i = h('input', { class: 'inp', inputmode: 'decimal', placeholder: '0', autocomplete: 'off' });
+    i.addEventListener('input', () => { let v = i.value.replace(/[^\d.]/g, ''); const k = v.indexOf('.'); if (k >= 0) v = v.slice(0, k + 1) + v.slice(k + 1).replace(/\./g, ''); if (v !== i.value) i.value = v; });
+    return i;
+  }
+  function discountOf(i) {
+    const t = i.value.trim(); if (!t) return 0;
+    const v = Number(t);
+    if (!isFinite(v) || v < 0 || v >= 100) throw new Error('Cash discount % must be a number from 0 to 99.99 (e.g. 2.5).');
+    return Math.round(v * 100) / 100;
+  }
+  const inwardRows = (ds, no, d, lines) => lines.map(l => ({ date: ds, 'invoice no.': no, type: l.type, item: l.item, 'sub-item': l.sub, colour: l.colour, 'inwards qty': l.qty,
+    'buy price': plain(l.rate), 'qty x price': plain(U.mul(l.qty, l.rate)), 'discount %': d }));
+  const inwardData = (ds, d, lines) => ({ date: ds, discount: d, lines: lines.map(l => ({ type: l.type, item: l.item, sub: l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate) })) });
+
   function editView() {
     const main = shell('Edit Previous Invoice', home), msg = msgBox();
+    const typeSel = h('select', { class: 'inp' }, h('option', { value: '' }, '---- Select ----'), h('option', { value: 'inward' }, 'Inward'), h('option', { value: 'outward' }, 'Outward'));
+    const outBox = h('div', { hidden: true }), inBox = h('div', { hidden: true });
+    main.append(h('section', { class: 'card' }, field('Choose Type', typeSel)), msg, outBox, inBox);
+    typeSel.addEventListener('change', () => { outBox.hidden = typeSel.value !== 'outward'; inBox.hidden = typeSel.value !== 'inward'; say(msg, ''); });
+    const views = [outwardEdit(outBox, msg), inwardEdit(inBox, msg)];
+    currentView = { onData() { views.forEach(v => v && v.onData && v.onData()); } };
+  }
+
+  /* EDIT an INWARD invoice: type its Invoice Number -> date (read only), products and cash discount can be changed */
+  function inwardEdit(box, msg) {
+    const invNo = h('input', { class: 'inp', placeholder: 'Invoice No.', autocomplete: 'off', autocapitalize: 'characters' });
+    const note = h('div', { class: 'hint' }, 'Type the Invoice Number of the inward invoice.');
+    const dateRo = h('input', { class: 'inp', readonly: true });
+    const disc = discountBox();
+    const area = new ProductRows({ model, rateFn: () => [null, ''], showReset: false, emptyText: 'No product on this invoice.', totalLabel: 'Total Inward Amount' });
+    let current = null;
+    const resetBtn = h('button', { class: 'btn small gray', onclick: () => { if (current) load(current); } }, 'Reset');
+    const detail = h('div', { hidden: true },
+      h('section', { class: 'card' }, h('h3', {}, 'Invoice Date (read only)'), dateRo),
+      h('section', { class: 'card' }, h('div', { class: 'row-between' }, h('h3', {}, 'Products – change, add or remove'), resetBtn), area.el),
+      h('section', { class: 'card' }, h('h3', {}, 'Cash discount %'), field('Cash discount % (numbers only, e.g. 2.5)', disc)),
+      submitBar('SUBMIT CHANGES', submit, () => { invNo.value = ''; lookup(); }, h('span')));
+    box.append(h('section', { class: 'card' }, h('h3', {}, 'Find the inward invoice'), field('Invoice Number', invNo), note), detail);
+    function lookup() {
+      const t = norm(invNo.value);
+      if (!t) { current = null; detail.hidden = true; note.textContent = 'Type the Invoice Number of the inward invoice.'; note.className = 'hint'; return; }
+      const no = Object.keys(model.inwardInvoices).find(k => norm(k) === t);
+      if (!no) { current = null; detail.hidden = true; note.textContent = 'No inward invoice with this number was found.'; note.className = 'hint bad'; return; }
+      if (no !== current) load(no);
+    }
+    function load(no) {
+      const w = model.inwardInvoices[no]; current = no;
+      dateRo.value = U.dmy(w.date); disc.value = w.discount ? String(w.discount) : '';
+      area.clear(); (w.lines || []).forEach(l => area.addRow(false, l));
+      note.textContent = 'Invoice found. Change the products or the cash discount below.'; note.className = 'hint ok'; say(msg, '');
+      detail.hidden = false;
+    }
+    function submit() {
+      area.commitAll();
+      const job = tryRun(() => {
+        if (!current) throw new Error('Type the Invoice Number of an existing inward invoice first.');
+        const w = model.inwardInvoices[current], d = discountOf(disc), lines = area.lines();
+        if (!lines.length) throw new Error('Add at least one product.');
+        const total = lines.reduce((a, l) => a + l.qty * l.rate, 0);
+        return { id: U.uuid(), label: 'edited inward ' + current + '  |  ₹' + roundRupee(total).toLocaleString('en-IN'),
+          parts: [{ kind: 'inward_edit', invoice: current, rows: inwardRows(w.date, current, d, lines) }],
+          overlay: { inwards: inwardRows(w.date, current, d, lines), inwardInvoice: { no: current, data: inwardData(w.date, d, lines) } } };
+      }, msg);
+      if (!job) return;
+      submitJob(job); say(msg, '✔ Saved on this device' + (online ? ' – uploading…' : ' – will upload when you are online') + '  (' + job.label + ')');
+      invNo.value = ''; lookup();
+    }
+    invNo.addEventListener('input', lookup);
+    return { onData() { if (!current) lookup(); } };
+  }
+
+  /* EDIT an OUTWARD invoice (Invoice Record) */
+  function outwardEdit(box, msg) {
     const serial = h('input', { class: 'inp', inputmode: 'numeric', placeholder: 'Serial No.', autocomplete: 'off' });
     const invNo = h('input', { class: 'inp', readonly: true, placeholder: 'Invoice Number' });
     const note = h('div', { class: 'hint' }, 'Type the Serial Number of the invoice.');
@@ -883,8 +964,8 @@
       serial.value = ''; lookup();
     }
     serial.addEventListener('input', lookup);
-    main.append(h('section', { class: 'card' }, h('h3', {}, 'Find the invoice'), h('div', { class: 'grid2' }, field('Serial Number', serial), field('Invoice Number', invNo)), note), msg, detail);
-    currentView = { onData() { if (!current) lookup(); } };
+    box.append(h('section', { class: 'card' }, h('h3', {}, 'Find the invoice'), h('div', { class: 'grid2' }, field('Serial Number', serial), field('Invoice Number', invNo)), note), detail);
+    return { onData() { if (!current) lookup(); } };
   }
 
   /* ------------------------------------------------------------------ start */
