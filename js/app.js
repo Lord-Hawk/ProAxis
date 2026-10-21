@@ -858,7 +858,7 @@
   }
   const inwardRows = (ds, no, d, lines) => lines.map(l => ({ date: ds, 'invoice no.': no, type: l.type, item: l.item, 'sub-item': l.sub, colour: l.colour, 'inwards qty': l.qty,
     'buy price': plain(l.rate), 'qty x price': plain(U.mul(l.qty, l.rate)), 'discount %': d,
-    'after discount': plain(Math.round(l.rate * (100 - d)) / 100) }));                // buy price per unit with the cash discount taken off
+    'after discount': plain(Math.round(l.qty * l.rate * (100 - d)) / 100) }));        // qty x price with the cash discount taken off
   const inwardData = (ds, d, lines) => ({ date: ds, discount: d, lines: lines.map(l => ({ type: l.type, item: l.item, sub: l.sub, colour: l.colour, qty: l.qty, price: plain(l.rate) })) });
 
   function editView() {
