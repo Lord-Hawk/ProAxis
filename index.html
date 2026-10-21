@@ -15,27 +15,29 @@
 </head>
 <body>
 <div id="splash" aria-hidden="true">
-  <video id="splashVid" playsinline webkit-playsinline preload="auto"><source src="splash.mp4?v=5" type="video/mp4"><source id="splashLast" src="splash.webm?v=5" type="video/webm"></video>
-  <button id="splashSound" type="button" hidden>🔊 Tap for sound</button>
+  <video id="splashVid" playsinline webkit-playsinline preload="auto"><source src="splash.mp4?v=6" type="video/mp4"><source id="splashLast" src="splash.webm?v=6" type="video/webm"></video>
 </div>
 <script>
-/* start-up animation: full white screen, the logo video WITH sound (if the phone allows it), then the app */
+/* start-up animation: full white screen, the logo video WITH sound, then the app.
+   If the browser refuses sound before the user has touched the page, the video keeps playing
+   and the sound switches on at the first touch, click or key press – no button is shown. */
 (function () {
-  var sp = document.getElementById('splash'), v = document.getElementById('splashVid'), snd = document.getElementById('splashSound'), done = false;
-  function finish() { if (done) return; done = true; sp.classList.add('hide'); setTimeout(function () { sp.remove(); }, 450); }
+  var sp = document.getElementById('splash'), v = document.getElementById('splashVid'), done = false;
+  function finish() { if (done) return; done = true; sp.classList.add('hide'); unbind(); setTimeout(function () { sp.remove(); }, 450); }
   try { if (sessionStorage.getItem('pa_splash')) { sp.remove(); return; } sessionStorage.setItem('pa_splash', '1'); } catch (e) {}
+  var evs = ['pointerdown', 'touchstart', 'keydown', 'click'];
+  function unmute() { if (done) return; v.muted = false; v.volume = 1; v.play().catch(function () {}); unbind(); }
+  function unbind() { evs.forEach(function (n) { document.removeEventListener(n, unmute, true); }); }
   v.addEventListener('ended', finish);
   v.addEventListener('error', finish);
   document.getElementById('splashLast').addEventListener('error', finish);   // no format this browser can play
   setTimeout(finish, 8000);                                   // never longer than 8 s
-  sp.addEventListener('click', function (e) {
-    if (e.target === snd || v.muted) { v.muted = false; snd.hidden = true; v.play().catch(function () {}); }
-  });
-  v.muted = false;
+  v.muted = false; v.volume = 1;
   var p = v.play();
-  if (p && p.catch) p.catch(function () {                       // the browser blocked sound: play silently, offer sound
-    v.muted = true; snd.hidden = false;
+  if (p && p.catch) p.catch(function () {                       // sound blocked: play silently, unmute on the first touch
+    v.muted = true;
     v.play().catch(finish);
+    evs.forEach(function (n) { document.addEventListener(n, unmute, true); });
   });
 })();
 </script>
