@@ -14,6 +14,31 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <video id="splashVid" playsinline webkit-playsinline preload="auto"><source src="splash.mp4" type="video/mp4"><source id="splashLast" src="splash.webm" type="video/webm"></video>
+  <button id="splashSound" type="button" hidden>🔊 Tap for sound</button>
+</div>
+<script>
+/* start-up animation: full white screen, the logo video WITH sound (if the phone allows it), then the app */
+(function () {
+  var sp = document.getElementById('splash'), v = document.getElementById('splashVid'), snd = document.getElementById('splashSound'), done = false;
+  function finish() { if (done) return; done = true; sp.classList.add('hide'); setTimeout(function () { sp.remove(); }, 450); }
+  try { if (sessionStorage.getItem('pa_splash')) { sp.remove(); return; } sessionStorage.setItem('pa_splash', '1'); } catch (e) {}
+  v.addEventListener('ended', finish);
+  v.addEventListener('error', finish);
+  document.getElementById('splashLast').addEventListener('error', finish);   // no format this browser can play
+  setTimeout(finish, 8000);                                   // never longer than 8 s
+  sp.addEventListener('click', function (e) {
+    if (e.target === snd || v.muted) { v.muted = false; snd.hidden = true; v.play().catch(function () {}); }
+  });
+  v.muted = false;
+  var p = v.play();
+  if (p && p.catch) p.catch(function () {                       // the browser blocked sound: play silently, offer sound
+    v.muted = true; snd.hidden = false;
+    v.play().catch(finish);
+  });
+})();
+</script>
 <div id="app"><p class="boot">Loading ProAxis…</p></div>
 <script>
 /* shows any error on screen (a file that did not load, or a bug) instead of a blank page */
@@ -27,6 +52,7 @@
   }
   window.addEventListener('error', function (e) {
     var t = e.target;
+    if (t && t.tagName === 'VIDEO') return;                    // the start-up video failing just skips the animation
     if (t && t !== window && (t.src || t.href)) show('Could not load ' + (t.src || t.href));
     else show((e.message || 'Error') + (e.filename ? '  (' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno + ')' : ''));
   }, true);

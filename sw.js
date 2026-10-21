@@ -1,5 +1,5 @@
 /* ProAxis service worker: keeps the app files so the app opens without internet. Bump CACHE when you upload new files. */
-const CACHE = 'proaxis-v5';
+const CACHE = 'proaxis-v6';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/config.js', 'js/util.js', 'js/model.js', 'js/ui.js', 'js/app.js',
                'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo-bar.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
@@ -8,7 +8,8 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;       // the API calls go straight to Google
+  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  if (req.headers.has('range') || /\.(mp4|webm)$/.test(new URL(req.url).pathname)) return;     // the start-up video: straight from the network / browser cache       // the API calls go straight to Google
   e.respondWith(
     fetch(req, { cache: 'no-cache' }).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); return res; })   // newest file when online
       .catch(() => caches.match(req).then(r => r || caches.match('index.html')))                                  // cached file when offline

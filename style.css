@@ -177,3 +177,9 @@ table.beat th.c,table.beat td.c{text-align:center}
 .pill.green{background:#dcfce7;color:#166534}.pill.blue{background:#dbeafe;color:#1e40af}.pill.yellow{background:#fef3c7;color:#92400e}
 .pill.red{background:#fee2e2;color:#b91c1c}.pill.grey{background:#e2e8f0;color:#475569}
 table.beat td.wrap{white-space:normal;min-width:80px}
+
+/* start-up animation */
+#splash{position:fixed;inset:0;z-index:1000;background:#fff;display:flex;align-items:center;justify-content:center;transition:opacity .4s}
+#splash.hide{opacity:0;pointer-events:none}
+#splash video{width:100%;max-width:720px;max-height:100%;background:#fff;object-fit:contain}
+#splashSound{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:99px;padding:8px 16px;font:inherit;font-size:14px}
