@@ -9,7 +9,7 @@
     reset() {
       this.tree = {}; this.listPrice = {}; this.buyPrice = {}; this.counters = {}; this.marketCounters = {};
       this.counterTypes = new Set(); this.partial = {}; this.calendar = {}; this.markets = new Set();
-      this.dsoMarkets = {}; this.everyMarketSet = new Set(); this.invoices = {}; this.outOfBeatSet = new Set();
+      this.dsoMarkets = {}; this.everyMarketSet = new Set(); this.invoices = {}; this.inwardInvoices = {}; this.outOfBeatSet = new Set();
     }
     load(d) {
       this.reset();
@@ -25,6 +25,7 @@
       (d.everyMarket || []).forEach(m => this.everyMarketSet.add(m));
       (d.outOfBeat || []).forEach(m => this.outOfBeatSet.add(m));
       Object.entries(d.invoices || {}).forEach(([no, v]) => { this.invoices[no] = v; });
+      Object.entries(d.inwardInvoices || {}).forEach(([no, v]) => { this.inwardInvoices[no] = v; });
     }
     addProduct(t, i, s, c) {
       [t, i, s, c] = [t, i, s, c].map(clean);
@@ -127,6 +128,7 @@
         this.addProduct(r.type, r.item, r['sub-item'], r.colour);
         if (r['buy price']) this.buyPrice[keyOf(r.type, r.item, r['sub-item'], r.colour)] = r['buy price'];
       });
+      if (o.inwardInvoice) this.inwardInvoices[o.inwardInvoice.no] = o.inwardInvoice.data;
       if (o.invoice) {
         this.invoices[o.invoice.no] = o.invoice.data;
         (o.invoice.data.lines || []).forEach(l => this.addProduct(l.type, l.item, l.sub, l.colour));
